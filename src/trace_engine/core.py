@@ -10,6 +10,7 @@ from trace_engine.models.code_graph import CodeGraph
 from trace_engine.models.evidence import QueryResult
 from trace_engine.query.dead_code import DeadCodeDetector
 from trace_engine.query.dependencies import DependencyAnalyzer
+from trace_engine.query.advanced import AdvancedAnalyzer
 from trace_engine.query.engine import QueryEngine
 from trace_engine.query.impact import ImpactAnalyzer
 from trace_engine.query.navigation import CodeNavigator
@@ -101,3 +102,51 @@ class Trace:
 
     def path(self, from_name: str, to_name: str) -> QueryResult:
         return CodeNavigator(self.graph, repo_root=self.repo_path).find_path(from_name, to_name)
+
+    def stale_modules(self) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).find_stale_modules()
+
+    def entry_flows(self, *, kind: str = "all", max_depth: int = 5) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).trace_entry_flows(kind=kind, max_depth=max_depth)
+
+    def criticality(self, *, limit: int = 10) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).rank_criticality(limit=limit)
+
+    def onboarding(self) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).onboarding_summary()
+
+    def concept_search(self, concept: str) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).concept_search(concept)
+
+    def call_flow(self, name: str, *, max_depth: int = 6) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).call_flow(name, max_depth=max_depth)
+
+    def history_drift(self, *, limit: int = 10) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).history_drift(limit=limit)
+
+    def pr_review(
+        self,
+        *,
+        changed_files: list[str] | None = None,
+        diff_text: str | None = None,
+        base_ref: str | None = None,
+        head_ref: str | None = None,
+    ) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).pr_review(
+            changed_files=changed_files,
+            diff_text=diff_text,
+            base_ref=base_ref,
+            head_ref=head_ref,
+        )
+
+    def refactor_plan(self) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).refactor_plan()
+
+    def migration_tracker(self, *, legacy_terms: list[str], target_term: str | None = None) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).migration_tracker(
+            legacy_terms=legacy_terms,
+            target_term=target_term,
+        )
+
+    def ask_architecture(self, question: str) -> QueryResult:
+        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).ask_architecture(question)

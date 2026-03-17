@@ -91,4 +91,23 @@ export const api = {
   search: (q: string) => get<QueryResult>(`/search?q=${encodeURIComponent(q)}`),
   path: (from: string, to: string) =>
     get<QueryResult>(`/path?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  staleModules: () => get<QueryResult>("/stale-modules"),
+  entryFlows: (kind = "all", maxDepth = 5) =>
+    get<QueryResult>(`/entry-flows?kind=${encodeURIComponent(kind)}&max_depth=${maxDepth}`),
+  criticality: (limit = 10) => get<QueryResult>(`/criticality?limit=${limit}`),
+  onboarding: () => get<QueryResult>("/onboarding"),
+  conceptSearch: (q: string) => get<QueryResult>(`/concept-search?q=${encodeURIComponent(q)}`),
+  callFlow: (name: string, maxDepth = 6) =>
+    get<QueryResult>(`/call-flow?name=${encodeURIComponent(name)}&max_depth=${maxDepth}`),
+  historyDrift: (limit = 10) => get<QueryResult>(`/history-drift?limit=${limit}`),
+  prReview: (payload: {
+    changed_files?: string[];
+    diff_text?: string;
+    base_ref?: string;
+    head_ref?: string;
+  }) => post<QueryResult>("/pr-review", payload),
+  refactorPlan: () => get<QueryResult>("/refactor-plan"),
+  migrationTracker: (payload: { legacy_terms: string[]; target_term?: string }) =>
+    post<QueryResult>("/migration-tracker", payload),
+  askArchitecture: (question: string) => post<QueryResult>("/ask", { question }),
 };

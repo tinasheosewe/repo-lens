@@ -85,7 +85,11 @@ export interface RepoSupportResponse {
 
 export type Page =
   | "about"
+  | "discovery"
   | "dashboard"
+  | "audit"
+  | "flows"
+  | "workflow"
   | "impact"
   | "dead-code"
   | "dependencies"

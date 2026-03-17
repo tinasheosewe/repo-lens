@@ -56,6 +56,22 @@ class RepoSupportResponse(BaseModel):
     active_extensions: list[str]
 
 
+class AskRequest(BaseModel):
+    question: str
+
+
+class PullRequestReviewRequest(BaseModel):
+    changed_files: list[str] | None = None
+    diff_text: str | None = None
+    base_ref: str | None = None
+    head_ref: str | None = None
+
+
+class MigrationTrackerRequest(BaseModel):
+    legacy_terms: list[str]
+    target_term: str | None = None
+
+
 def _get_trace() -> Trace:
     if _trace is None:
         raise HTTPException(503, "No repository loaded. POST /api/ingest first.")
@@ -241,6 +257,64 @@ def create_app(repo_path: str | None = None) -> FastAPI:
         to_name: str = Query(..., alias="to"),
     ):
         return _get_trace().path(from_name, to_name)
+
+    @app.get("/api/stale-modules", response_model=QueryResult)
+    def stale_modules():
+        return _get_trace().stale_modules()
+
+    @app.get("/api/entry-flows", response_model=QueryResult)
+    def entry_flows(
+        kind: str = Query("all", pattern="^(all|route|job|cli)$"),
+        max_depth: int = Query(5, ge=1, le=12),
+    ):
+        return _get_trace().entry_flows(kind=kind, max_depth=max_depth)
+
+    @app.get("/api/criticality", response_model=QueryResult)
+    def criticality(limit: int = Query(10, ge=1, le=25)):
+        return _get_trace().criticality(limit=limit)
+
+    @app.get("/api/onboarding", response_model=QueryResult)
+    def onboarding():
+        return _get_trace().onboarding()
+
+    @app.get("/api/concept-search", response_model=QueryResult)
+    def concept_search(q: str = Query(..., min_length=1)):
+        return _get_trace().concept_search(q)
+
+    @app.get("/api/call-flow", response_model=QueryResult)
+    def call_flow(
+        name: str = Query(..., min_length=1),
+        max_depth: int = Query(6, ge=1, le=12),
+    ):
+        return _get_trace().call_flow(name, max_depth=max_depth)
+
+    @app.get("/api/history-drift", response_model=QueryResult)
+    def history_drift(limit: int = Query(10, ge=1, le=25)):
+        return _get_trace().history_drift(limit=limit)
+
+    @app.post("/api/pr-review", response_model=QueryResult)
+    def pr_review(req: PullRequestReviewRequest = Body(...)):
+        return _get_trace().pr_review(
+            changed_files=req.changed_files,
+            diff_text=req.diff_text,
+            base_ref=req.base_ref,
+            head_ref=req.head_ref,
+        )
+
+    @app.get("/api/refactor-plan", response_model=QueryResult)
+    def refactor_plan():
+        return _get_trace().refactor_plan()
+
+    @app.post("/api/migration-tracker", response_model=QueryResult)
+    def migration_tracker(req: MigrationTrackerRequest = Body(...)):
+        return _get_trace().migration_tracker(
+            legacy_terms=req.legacy_terms,
+            target_term=req.target_term,
+        )
+
+    @app.post("/api/ask", response_model=QueryResult)
+    def ask_architecture(req: AskRequest = Body(...)):
+        return _get_trace().ask_architecture(req.question)
 
     # -----------------------------------------------------------------------
     # Serve built frontend (production)

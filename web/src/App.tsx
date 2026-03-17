@@ -3,11 +3,15 @@ import type { Page, StatusResponse } from "./types";
 import { api } from "./api/client";
 import Sidebar from "./components/Sidebar";
 import About from "./pages/About";
+import Audit from "./pages/Audit";
 import Dashboard from "./pages/Dashboard";
+import Discovery from "./pages/Discovery";
+import Flows from "./pages/Flows";
 import Impact from "./pages/Impact";
 import DeadCode from "./pages/DeadCode";
 import Dependencies from "./pages/Dependencies";
 import Explorer from "./pages/Explorer";
+import Workflow from "./pages/Workflow";
 
 export default function App() {
   const [page, setPage] = useState<Page>("about");
@@ -47,7 +51,11 @@ export default function App() {
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-[1400px] mx-auto">
           {page === "about" && <About status={status} onRepoLoaded={handleRepoLoaded} />}
+          {page === "discovery" && <Discovery />}
           {page === "dashboard" && <Dashboard />}
+          {page === "audit" && <Audit />}
+          {page === "flows" && <Flows />}
+          {page === "workflow" && <Workflow />}
           {page === "impact" && <Impact />}
           {page === "dead-code" && <DeadCode />}
           {page === "dependencies" && <Dependencies />}

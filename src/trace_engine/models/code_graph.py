@@ -176,6 +176,13 @@ class CodeGraph:
         """All simple cycles in the graph."""
         return [list(c) for c in nx.simple_cycles(self._graph)]
 
+    def to_simple_digraph(self) -> nx.DiGraph:
+        """Return a de-duplicated directed view of the graph."""
+        graph = nx.DiGraph()
+        graph.add_nodes_from(self._graph.nodes())
+        graph.add_edges_from(self._graph.edges())
+        return graph
+
     # ------------------------------------------------------------------
     # Stats
     # ------------------------------------------------------------------

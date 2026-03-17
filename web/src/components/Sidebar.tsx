@@ -5,14 +5,22 @@ import {
   Compass,
   GitBranch,
   LayoutDashboard,
+  Milestone,
   Radio,
+  Route,
+  Search,
+  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import type { Page, StatusResponse } from "../types";
 
 const NAV_ITEMS: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "about", label: "About", icon: <BookOpen size={18} /> },
+  { id: "discovery", label: "Discovery", icon: <Search size={18} /> },
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
+  { id: "audit", label: "Audit", icon: <ShieldCheck size={18} /> },
+  { id: "flows", label: "Flows", icon: <Route size={18} /> },
+  { id: "workflow", label: "Workflow", icon: <Milestone size={18} /> },
   { id: "impact", label: "Impact Analysis", icon: <Radio size={18} /> },
   { id: "dead-code", label: "Dead Code", icon: <Trash2 size={18} /> },
   { id: "dependencies", label: "Dependencies", icon: <GitBranch size={18} /> },
