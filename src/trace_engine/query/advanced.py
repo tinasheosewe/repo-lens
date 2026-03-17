@@ -625,20 +625,12 @@ class AdvancedAnalyzer:
         if not query:
             return QueryResult(conclusion="Ask a non-empty architecture question.", confidence=Confidence.HIGH)
 
-        concept = self.concept_search(query)
-        onboarding = self.onboarding_summary()
-        critical = self.rank_criticality(limit=5)
-        fallback = self._ask_architecture_fallback(
-            query,
-            concept=concept,
-            onboarding=onboarding,
-            critical=critical,
-            warning=None,
-        )
-
         try:
             client = TraceLLMClient.from_environment()
         except LLMConfigurationError as exc:
+            concept = self.concept_search(query)
+            onboarding = self.onboarding_summary()
+            critical = self.rank_criticality(limit=5)
             return self._ask_architecture_fallback(
                 query,
                 concept=concept,
@@ -650,11 +642,7 @@ class AdvancedAnalyzer:
                 ),
             )
 
-        tool_outputs: dict[str, QueryResult] = {
-            "concept_search": concept,
-            "repo_overview": onboarding,
-            "critical_symbols": critical,
-        }
+        tool_outputs: dict[str, QueryResult] = {}
         tool_trace: list[dict[str, object]] = []
         tools = self._ask_architecture_tool_definitions()
 
@@ -676,13 +664,16 @@ class AdvancedAnalyzer:
                 user_prompt=(
                     f"Question: {query}\n\n"
                     "Available tools expose repository structure, criticality, concept matches, entry flows, drift, file inspection, and symbol search. "
-                    "Use the tools to gather grounded facts, then produce a concise but information-dense answer."
+                    "Start from the user query. Use tools only when they help answer it. Then produce a concise, grounded answer with rich UI blocks."
                 ),
                 response_schema=self._ASK_UI_SCHEMA,
                 tools=tools,
                 tool_handler=tool_handler,
             )
         except RuntimeError as exc:
+            concept = self.concept_search(query)
+            onboarding = self.onboarding_summary()
+            critical = self.rank_criticality(limit=5)
             return self._ask_architecture_fallback(
                 query,
                 concept=concept,
@@ -694,7 +685,6 @@ class AdvancedAnalyzer:
         return self._build_ask_architecture_result(
             query,
             structured,
-            fallback=fallback,
             tool_outputs=tool_outputs,
             tool_trace=tool_trace,
         )
@@ -994,29 +984,26 @@ class AdvancedAnalyzer:
         query: str,
         structured: dict[str, object],
         *,
-        fallback: QueryResult,
         tool_outputs: dict[str, QueryResult],
         tool_trace: list[dict[str, object]],
     ) -> QueryResult:
-        summary = self._safe_string(structured.get("summary")) or fallback.conclusion
+        summary = self._safe_string(structured.get("summary")) or "No answer was returned."
         confidence_raw = self._safe_string(structured.get("confidence")).lower()
         confidence = {
             "high": Confidence.HIGH,
             "medium": Confidence.MEDIUM,
             "low": Confidence.LOW,
-        }.get(confidence_raw, fallback.confidence)
+        }.get(confidence_raw, Confidence.MEDIUM)
         reasoning_steps_raw = structured.get("reasoning_steps")
         reasoning_steps = reasoning_steps_raw if isinstance(reasoning_steps_raw, list) else []
         reasoning_chain = [
             ReasoningStep(step=index, description=str(step))
             for index, step in enumerate(reasoning_steps[:6], start=1)
             if isinstance(step, str) and step.strip()
-        ] or fallback.reasoning_chain
-        ui_blocks = self._sanitize_ui_blocks(structured.get("ui_blocks")) or fallback.metadata.get("ui_blocks", [])
+        ]
+        ui_blocks = self._sanitize_ui_blocks(structured.get("ui_blocks"))
         citations = structured.get("citations") if isinstance(structured.get("citations"), list) else []
         evidence = self._build_ask_architecture_evidence(citations, tool_outputs)
-        if not evidence:
-            evidence = fallback.evidence
 
         return QueryResult(
             conclusion=summary,

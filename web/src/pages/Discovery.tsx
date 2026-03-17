@@ -126,9 +126,12 @@ export default function Discovery() {
           <textarea
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Ask a repository architecture question..."
+            placeholder="Ask something concrete, like: Where does auth start and flow next?"
             className="w-full min-h-[120px] bg-gray-800/50 text-gray-200 placeholder:text-gray-600 px-4 py-3 text-sm rounded-lg border border-t-border focus:border-t-primary/50 focus:outline-none transition-colors"
           />
+          <div className="rounded-lg border border-t-border/30 bg-gray-950/35 px-3 py-3 text-sm text-gray-400">
+            Try prompts like <span className="text-gray-200">Where is repo loading implemented?</span>, <span className="text-gray-200">Which symbols are riskiest to change?</span>, or <span className="text-gray-200">What files churn together most often?</span>
+          </div>
           <button
             type="button"
             onClick={ask}

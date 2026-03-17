@@ -126,6 +126,34 @@ class TestAdvancedAnalyzer:
         assert result.metadata.get("tool_trace")
         assert any(evidence.file_path == "services/auth.py" for evidence in result.evidence)
 
+    def test_ask_architecture_passes_short_query_to_llm(self, sample_graph: CodeGraph, monkeypatch):
+        class FakeClient:
+            def complete_structured_with_tools(self, **kwargs):
+                assert "Question: hi" in kwargs["user_prompt"]
+                return {
+                    "summary": "Hello. Ask a repository question whenever you're ready.",
+                    "confidence": "high",
+                    "reasoning_steps": [],
+                    "ui_blocks": [
+                        {
+                            "type": "narrative",
+                            "title": "Greeting",
+                            "body": "Hello. Ask a repository question whenever you're ready.",
+                            "tone": "info",
+                            "items": [],
+                        }
+                    ],
+                    "citations": [],
+                }
+
+        monkeypatch.setattr(TraceLLMClient, "from_environment", classmethod(lambda cls: FakeClient()))
+        analyzer = AdvancedAnalyzer(sample_graph, repo_root=FIXTURES_DIR)
+
+        result = analyzer.ask_architecture("hi")
+
+        assert result.conclusion == "Hello. Ask a repository question whenever you're ready."
+        assert result.metadata.get("ui_blocks")
+
 
 def test_trace_llm_client_reads_openai_api_key(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
