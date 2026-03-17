@@ -56,6 +56,7 @@ export interface StatusResponse {
   loaded: boolean;
   repo_path: string | null;
   repo_source: string | null;
+  repo_display_source: string | null;
   repo_source_type: string | null;
   repo_ref: string | null;
   node_count: number;
@@ -87,6 +88,7 @@ export interface AboutResponse {
 
 export interface RepoSupportResponse {
   source: string;
+  display_source: string;
   source_type: string;
   ref: string | null;
   resolved_path: string;

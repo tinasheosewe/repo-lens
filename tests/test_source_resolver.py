@@ -81,6 +81,49 @@ class TestRepoSourceResolver:
         assert resolved.ref == "feature/test-ref"
         assert "feature" in (resolved.local_path / "app.py").read_text(encoding="utf-8")
 
+    def test_uses_origin_url_as_display_source_for_dot(self, tmp_path: Path, monkeypatch):
+        resolver = RepoSourceResolver()
+
+        worktree = tmp_path / "worktree_dot"
+        worktree.mkdir()
+        (worktree / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+
+        _git("init", cwd=worktree)
+        _git("config", "user.name", "Trace Test", cwd=worktree)
+        _git("config", "user.email", "trace@example.com", cwd=worktree)
+        _git("add", "app.py", cwd=worktree)
+        _git("commit", "-m", "initial", cwd=worktree)
+
+        bare = tmp_path / "display_remote.git"
+        _git("clone", "--bare", str(worktree), str(bare))
+        _git("remote", "add", "origin", bare.as_uri(), cwd=worktree)
+
+        monkeypatch.chdir(worktree)
+        resolved = resolver.resolve(".")
+
+        assert resolved.source == "."
+        assert resolved.display_source == bare.as_uri()
+
+    def test_rejects_remote_checkout_over_size_limit(self, tmp_path: Path, monkeypatch):
+        resolver = RepoSourceResolver()
+
+        worktree = tmp_path / "worktree_large"
+        worktree.mkdir()
+        (worktree / "large.bin").write_bytes(b"x" * 128)
+
+        _git("init", cwd=worktree)
+        _git("config", "user.name", "Trace Test", cwd=worktree)
+        _git("config", "user.email", "trace@example.com", cwd=worktree)
+        _git("add", "large.bin", cwd=worktree)
+        _git("commit", "-m", "initial", cwd=worktree)
+
+        bare = tmp_path / "too_large.git"
+        _git("clone", "--bare", str(worktree), str(bare))
+
+        monkeypatch.setenv("TRACE_MAX_CLONE_BYTES", "32")
+        with pytest.raises(RuntimeError, match="exceeds the clone size limit"):
+            resolver.resolve(bare.as_uri())
+
     def test_lists_review_refs(self, tmp_path: Path):
         resolver = RepoSourceResolver()
 

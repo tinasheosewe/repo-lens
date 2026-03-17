@@ -30,6 +30,7 @@ class StatusResponse(BaseModel):
     loaded: bool
     repo_path: str | None = None
     repo_source: str | None = None
+    repo_display_source: str | None = None
     repo_source_type: str | None = None
     repo_ref: str | None = None
     node_count: int = 0
@@ -46,6 +47,7 @@ class AboutResponse(BaseModel):
 
 class RepoSupportResponse(BaseModel):
     source: str
+    display_source: str
     source_type: str
     ref: str | None
     resolved_path: str
@@ -132,6 +134,7 @@ def create_app(repo_path: str | None = None) -> FastAPI:
 
         return resolved, RepoSupportResponse(
             source=resolved.source,
+            display_source=resolved.display_source,
             source_type=resolved.source_type,
             ref=resolved.ref,
             resolved_path=inspection.path,
@@ -153,6 +156,7 @@ def create_app(repo_path: str | None = None) -> FastAPI:
                 loaded=True,
                 repo_path=str(_trace.repo_path),
                 repo_source=_trace.source,
+                repo_display_source=source_resolver.display_source_for(_trace.source, _trace.repo_path),
                 repo_source_type="remote" if RepoSourceResolver.is_remote_source(_trace.source) else "local",
                 repo_ref=_trace.source_ref,
                 node_count=g.node_count,
@@ -163,6 +167,7 @@ def create_app(repo_path: str | None = None) -> FastAPI:
                 loaded=False,
                 repo_path=str(_trace.repo_path),
                 repo_source=_trace.source,
+                repo_display_source=source_resolver.display_source_for(_trace.source, _trace.repo_path),
                 repo_source_type="remote" if RepoSourceResolver.is_remote_source(_trace.source) else "local",
                 repo_ref=_trace.source_ref,
             )
@@ -179,6 +184,7 @@ def create_app(repo_path: str | None = None) -> FastAPI:
             loaded=True,
             repo_path=str(t.repo_path),
             repo_source=t.source,
+            repo_display_source=source_resolver.display_source_for(t.source, t.repo_path),
             repo_source_type=inspection.source_type,
             repo_ref=t.source_ref,
             node_count=g.node_count,

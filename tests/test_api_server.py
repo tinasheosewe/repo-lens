@@ -76,6 +76,37 @@ def test_create_app_preloads_repo_from_trace_repo_path_env(tmp_path: Path, monke
     assert data["repo_source_type"] == "local"
 
 
+def test_status_reports_display_source_for_dot_git_repo(tmp_path: Path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+
+    _git("init", cwd=repo)
+    _git("config", "user.name", "Trace Test", cwd=repo)
+    _git("config", "user.email", "trace@example.com", cwd=repo)
+    _git("add", "app.py", cwd=repo)
+    _git("commit", "-m", "initial", cwd=repo)
+
+    bare = tmp_path / "origin.git"
+    _git("clone", "--bare", str(repo), str(bare), cwd=tmp_path)
+    _git("remote", "add", "origin", bare.as_uri(), cwd=repo)
+
+    monkeypatch.chdir(repo)
+    server._trace = None
+    app = server.create_app()
+    client = TestClient(app)
+
+    ingest_response = client.post("/api/ingest", json={"source": "."})
+    assert ingest_response.status_code == 200
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["repo_source"] == "."
+    assert data["repo_display_source"] == bare.as_uri()
+
+
 def test_onboarding_endpoint_returns_summary(tmp_path: Path):
     source_dir = tmp_path / "repo"
     source_dir.mkdir()

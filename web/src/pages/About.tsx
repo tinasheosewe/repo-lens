@@ -12,7 +12,7 @@ interface Props {
 
 export default function About({ status, onRepoLoaded }: Props) {
   const [about, setAbout] = useState<AboutResponse | null>(null);
-  const [repoPath, setRepoPath] = useState(status?.repo_source ?? DEFAULT_REMOTE_SOURCE);
+  const [repoPath, setRepoPath] = useState(status?.repo_display_source ?? status?.repo_source ?? DEFAULT_REMOTE_SOURCE);
   const [repoRef, setRepoRef] = useState(status?.repo_ref ?? "");
   const [support, setSupport] = useState<RepoSupportResponse | null>(null);
   const [checking, setChecking] = useState(false);
@@ -25,9 +25,9 @@ export default function About({ status, onRepoLoaded }: Props) {
   }, []);
 
   useEffect(() => {
-    setRepoPath(status?.repo_source ?? DEFAULT_REMOTE_SOURCE);
+    setRepoPath(status?.repo_display_source ?? status?.repo_source ?? DEFAULT_REMOTE_SOURCE);
     setRepoRef(status?.repo_ref ?? "");
-  }, [status?.repo_ref, status?.repo_source]);
+  }, [status?.repo_display_source, status?.repo_ref, status?.repo_source]);
 
   const checkSupport = async () => {
     const source = repoPath.trim();
@@ -207,6 +207,11 @@ export default function About({ status, onRepoLoaded }: Props) {
               <div className="mt-3 text-xs text-current/80">
                 Source type: {support.source_type}
               </div>
+              {support.display_source !== support.source && (
+                <div className="mt-2 text-xs text-current/80 break-all">
+                  Resolved source: {support.display_source}
+                </div>
+              )}
               {support.ref && (
                 <div className="mt-2 text-xs text-current/80">
                   Ref: {support.ref}
@@ -260,7 +265,7 @@ export default function About({ status, onRepoLoaded }: Props) {
 
           {status?.loaded && (
             <div className="rounded-xl border border-t-border/40 bg-gray-950/35 px-4 py-3 text-sm text-gray-300">
-              Current source: <span className="font-mono text-gray-400 break-all">{status.repo_source}</span>
+              Current source: <span className="font-mono text-gray-400 break-all">{status.repo_display_source ?? status.repo_source}</span>
               {status.repo_ref && (
                 <div className="mt-2 text-xs text-gray-500">
                   Ref: <span className="font-mono">{status.repo_ref}</span>

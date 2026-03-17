@@ -6,6 +6,25 @@ import ResultPanel from "../components/ResultPanel";
 
 type Tab = "onboarding" | "ask" | "concept" | "drift";
 
+const TAB_DESCRIPTIONS: Record<Tab, { title: string; description: string }> = {
+  onboarding: {
+    title: "Onboarding",
+    description: "Build a quick mental model of the repository by surfacing core subsystems, entry flows, and high-signal starting points.",
+  },
+  ask: {
+    title: "Ask Repo",
+    description: "Send natural-language architecture questions through the repo context to get grounded answers instead of raw keyword search.",
+  },
+  concept: {
+    title: "Concept Search",
+    description: "Search by domain idea rather than exact symbol name to find related validators, services, handlers, and modules.",
+  },
+  drift: {
+    title: "Repo Drift",
+    description: "Shows historical change drift by highlighting files that frequently move together or carry concentrated churn, which helps spot unstable boundaries and likely change-coupling.",
+  },
+};
+
 function TabButton({ active, label, onClick, icon: Icon }: { active: boolean; label: string; onClick: () => void; icon: React.ElementType }) {
   return (
     <button
@@ -95,6 +114,11 @@ export default function Discovery() {
         <TabButton active={tab === "ask"} label="Ask Repo" icon={MessageSquareText} onClick={() => setTab("ask")} />
         <TabButton active={tab === "concept"} label="Concept Search" icon={Search} onClick={() => setTab("concept")} />
         <TabButton active={tab === "drift"} label="History Drift" icon={History} onClick={() => setTab("drift")} />
+      </div>
+
+      <div className="glass rounded-xl p-4 border border-t-border/40">
+        <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">{TAB_DESCRIPTIONS[tab].title}</div>
+        <p className="text-sm text-gray-300 leading-relaxed">{TAB_DESCRIPTIONS[tab].description}</p>
       </div>
 
       {tab === "ask" && (

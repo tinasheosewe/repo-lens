@@ -13,17 +13,17 @@ import {
 } from "lucide-react";
 import type { Page, StatusResponse } from "../types";
 
-const NAV_ITEMS: { id: Page; label: string; icon: React.ReactNode }[] = [
-  { id: "about", label: "About", icon: <BookOpen size={18} /> },
-  { id: "discovery", label: "Discovery", icon: <Search size={18} /> },
-  { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
-  { id: "audit", label: "Audit", icon: <ShieldCheck size={18} /> },
-  { id: "flows", label: "Flows", icon: <Route size={18} /> },
-  { id: "workflow", label: "Workflow", icon: <Milestone size={18} /> },
-  { id: "impact", label: "Impact Analysis", icon: <Radio size={18} /> },
-  { id: "dead-code", label: "Dead Code", icon: <Trash2 size={18} /> },
-  { id: "dependencies", label: "Dependencies", icon: <GitBranch size={18} /> },
-  { id: "explorer", label: "Explorer", icon: <Compass size={18} /> },
+const NAV_ITEMS: { id: Page; label: string; description: string; icon: React.ReactNode }[] = [
+  { id: "about", label: "About", description: "Load repos and inspect support boundaries.", icon: <BookOpen size={18} /> },
+  { id: "discovery", label: "Discovery", description: "Onboarding, concept search, Q&A, and repo drift.", icon: <Search size={18} /> },
+  { id: "dashboard", label: "Dashboard", description: "High-level graph, language, and asset overview.", icon: <LayoutDashboard size={18} /> },
+  { id: "audit", label: "Audit", description: "Stale modules and criticality ranking.", icon: <ShieldCheck size={18} /> },
+  { id: "flows", label: "Flows", description: "Trace entry points and execution paths.", icon: <Route size={18} /> },
+  { id: "workflow", label: "Workflow", description: "PR review, refactors, and engineering workflows.", icon: <Milestone size={18} /> },
+  { id: "impact", label: "Impact Analysis", description: "See what depends on a selected change.", icon: <Radio size={18} /> },
+  { id: "dead-code", label: "Dead Code", description: "Find unreachable or unused graph nodes.", icon: <Trash2 size={18} /> },
+  { id: "dependencies", label: "Dependencies", description: "Inspect coupling, cycles, and hotspots.", icon: <GitBranch size={18} /> },
+  { id: "explorer", label: "Explorer", description: "Find graph paths between symbols.", icon: <Compass size={18} /> },
 ];
 
 interface Props {
@@ -33,12 +33,12 @@ interface Props {
 }
 
 export default function Sidebar({ activePage, onNavigate, status }: Props) {
-  const repoLabel = status?.repo_source
-    ? status.repo_source.replace(/\.git$/, "").split("/").filter(Boolean).pop()
+  const repoLabel = status?.repo_display_source
+    ? status.repo_display_source.replace(/\.git$/, "").split("/").filter(Boolean).pop()
     : null;
 
   return (
-    <aside className="w-60 h-full flex flex-col border-r border-t-border bg-t-surface shrink-0">
+    <aside className="w-72 h-full min-h-0 overflow-hidden flex flex-col border-r border-t-border bg-t-surface shrink-0">
       {/* Logo */}
       <div className="px-5 py-6 flex items-center gap-2.5">
         <img
@@ -57,15 +57,15 @@ export default function Sidebar({ activePage, onNavigate, status }: Props) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 space-y-0.5">
-        {NAV_ITEMS.map(({ id, label, icon }) => {
+      <nav className="flex-1 min-h-0 overflow-y-auto px-3 space-y-0.5 pb-3">
+        {NAV_ITEMS.map(({ id, label, description, icon }) => {
           const active = activePage === id;
           return (
             <button
               key={id}
               onClick={() => onNavigate(id)}
               className={`
-                w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+                w-full flex items-start gap-3 px-3 py-3 rounded-lg text-left
                 transition-all duration-150
                 ${
                   active
@@ -74,10 +74,15 @@ export default function Sidebar({ activePage, onNavigate, status }: Props) {
                 }
               `}
             >
-              {icon}
-              {label}
+              <span className="mt-0.5">{icon}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">{label}</span>
+                <span className={`mt-0.5 block text-[11px] leading-relaxed ${active ? "text-t-primary/80" : "text-gray-500"}`}>
+                  {description}
+                </span>
+              </span>
               {active && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-t-primary animate-glow-pulse" />
+                <span className="mt-1 ml-auto w-1.5 h-1.5 rounded-full bg-t-primary animate-glow-pulse" />
               )}
             </button>
           );
@@ -85,14 +90,14 @@ export default function Sidebar({ activePage, onNavigate, status }: Props) {
       </nav>
 
       {/* Status pill */}
-      <div className="px-4 py-4 border-t border-t-border">
+      <div className="shrink-0 px-4 py-4 border-t border-t-border bg-t-surface">
         {status?.loaded ? (
           <div className="text-xs space-y-1.5">
             <div className="flex items-center gap-1.5 text-t-emerald">
               <span className="w-1.5 h-1.5 rounded-full bg-t-emerald" />
               Connected
             </div>
-            <div className="text-gray-500 font-mono truncate" title={status.repo_path ?? ""}>
+            <div className="text-gray-500 font-mono truncate" title={status.repo_display_source ?? status.repo_path ?? ""}>
               {repoLabel}
             </div>
             <div className="text-gray-500">

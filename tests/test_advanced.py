@@ -32,6 +32,9 @@ class TestAdvancedAnalyzer:
 
         names = {e.function_name for e in result.evidence}
         assert "authenticate" in names or "process_payment" in names
+        rankings = result.metadata.get("rankings")
+        assert rankings
+        assert all("fan_in" in item and "fan_out" in item for item in rankings)
 
     def test_onboarding_summary_has_subsystems(self, sample_graph: CodeGraph):
         analyzer = AdvancedAnalyzer(sample_graph, repo_root=FIXTURES_DIR)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from urllib.parse import urlparse
 @dataclass(frozen=True)
 class ResolvedRepoSource:
     source: str
+    display_source: str
     source_type: str
     ref: str | None
     local_path: Path
@@ -41,6 +43,7 @@ class RepoSourceResolver:
     """Resolve a repo source into a local directory, cloning remotes when needed."""
 
     CACHE_DIR = Path.home() / ".trace" / "remote_repos"
+    DEFAULT_MAX_CLONE_BYTES = 250 * 1024 * 1024
 
     def list_review_refs(
         self,
@@ -78,18 +81,23 @@ class RepoSourceResolver:
             raise ValueError("Repository source cannot be empty.")
 
         if self.is_remote_source(normalized):
+            local_path = self._clone_or_update(normalized, normalized_ref)
             return ResolvedRepoSource(
                 source=normalized,
+                display_source=normalized,
                 source_type="remote",
                 ref=normalized_ref,
-                local_path=self._clone_or_update(normalized, normalized_ref),
+                local_path=local_path,
             )
+
+        local_path = Path(normalized).expanduser().resolve()
 
         return ResolvedRepoSource(
             source=normalized,
+            display_source=self.display_source_for(normalized, local_path),
             source_type="local",
             ref=normalized_ref,
-            local_path=Path(normalized).expanduser().resolve(),
+            local_path=local_path,
         )
 
     @staticmethod
@@ -128,6 +136,7 @@ class RepoSourceResolver:
                 ["-C", str(repo_dir), "clean", "-fd"],
                 source,
             )
+            self._enforce_repo_size_limit(repo_dir, source)
             return repo_dir.resolve()
 
         if repo_dir.exists():
@@ -138,7 +147,18 @@ class RepoSourceResolver:
             ["clone", "--depth", "1", *branch_args, source, str(repo_dir)],
             source,
         )
+        self._enforce_repo_size_limit(repo_dir, source)
         return repo_dir.resolve()
+
+    def display_source_for(self, source: str, local_path: Path) -> str:
+        normalized = source.strip()
+        if self.is_remote_source(normalized):
+            return normalized
+        if normalized not in {".", "./"}:
+            return normalized
+
+        remote_url = self._git_remote_url(local_path)
+        return remote_url or normalized
 
     def _cache_path_for(self, source: str, ref: str | None) -> Path:
         parsed = urlparse(source)
@@ -147,6 +167,30 @@ class RepoSourceResolver:
         cache_key = source if ref is None else f"{source}@{ref}"
         digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:12]
         return self.CACHE_DIR / f"{safe_stem}-{digest}"
+
+    def _max_clone_bytes(self) -> int:
+        raw = os.environ.get("TRACE_MAX_CLONE_BYTES", "").strip()
+        if not raw:
+            return self.DEFAULT_MAX_CLONE_BYTES
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise RuntimeError("TRACE_MAX_CLONE_BYTES must be an integer.") from exc
+        if value <= 0:
+            raise RuntimeError("TRACE_MAX_CLONE_BYTES must be positive.")
+        return value
+
+    def _enforce_repo_size_limit(self, repo_dir: Path, source: str) -> None:
+        limit = self._max_clone_bytes()
+        repo_size = self._directory_size(repo_dir)
+        if repo_size <= limit:
+            return
+
+        shutil.rmtree(repo_dir, ignore_errors=True)
+        raise RuntimeError(
+            f"Repository '{source}' exceeds the clone size limit of {self._human_size(limit)} "
+            f"({self._human_size(repo_size)} checked out)."
+        )
 
     def _default_remote_branch(self, git_bin: str, repo_path: Path) -> str | None:
         proc = subprocess.run(
@@ -243,6 +287,41 @@ class RepoSourceResolver:
     def _looks_like_commit_sha(value: str) -> bool:
         lowered = value.lower()
         return 7 <= len(lowered) <= 40 and all(ch in "0123456789abcdef" for ch in lowered)
+
+    @staticmethod
+    def _directory_size(path: Path) -> int:
+        total = 0
+        for child in path.rglob("*"):
+            if child.is_file():
+                total += child.stat().st_size
+        return total
+
+    @staticmethod
+    def _human_size(size_bytes: int) -> str:
+        units = ["B", "KB", "MB", "GB"]
+        size = float(size_bytes)
+        for unit in units:
+            if size < 1024 or unit == units[-1]:
+                return f"{size:.1f}{unit}" if unit != "B" else f"{int(size)}B"
+            size /= 1024
+        return f"{size_bytes}B"
+
+    @staticmethod
+    def _git_remote_url(repo_path: Path) -> str | None:
+        git_bin = shutil.which("git")
+        if git_bin is None or not (repo_path / ".git").exists():
+            return None
+
+        proc = subprocess.run(
+            [git_bin, "-C", str(repo_path), "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        remote = proc.stdout.strip()
+        return remote or None
 
     @staticmethod
     def _run(git_bin: str, args: list[str], source: str) -> None:

@@ -183,6 +183,21 @@ class AdvancedAnalyzer:
 
         rankings.sort(key=lambda item: item[0], reverse=True)
         top = rankings[:limit]
+        ranking_details = []
+        for score, node in top:
+            ranking_details.append(
+                {
+                    "node_id": node.id,
+                    "name": node.name,
+                    "file_path": node.file_path,
+                    "score": round(score, 3),
+                    "fan_in": self._graph.fan_in(node.id),
+                    "fan_out": self._graph.fan_out(node.id),
+                    "transitive_dependents": len(
+                        self._graph.get_transitive_dependents(node.id, {EdgeType.CALLS, EdgeType.IMPORTS})
+                    ),
+                }
+            )
         evidence = [
             Evidence(
                 file_path=node.file_path,
@@ -200,6 +215,7 @@ class AdvancedAnalyzer:
             evidence=evidence,
             confidence=Confidence.HIGH,
             affected_nodes=[node.id for _, node in top],
+            metadata={"rankings": ranking_details},
         )
 
     def onboarding_summary(self) -> QueryResult:
