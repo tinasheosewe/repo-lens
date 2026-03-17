@@ -1,0 +1,164 @@
+import type { Evidence, QueryResult, ReasoningStep } from "../types";
+import {
+  CheckCircle2,
+  AlertTriangle,
+  Info,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
+import { useState } from "react";
+
+/* ------------------------------------------------------------------ */
+/* Confidence badge                                                    */
+/* ------------------------------------------------------------------ */
+const confidenceConfig: Record<string, { color: string; icon: React.ReactNode }> = {
+  high: {
+    color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
+    icon: <CheckCircle2 size={14} />,
+  },
+  medium: {
+    color: "text-amber-400 bg-amber-400/10 border-amber-400/20",
+    icon: <AlertTriangle size={14} />,
+  },
+  low: {
+    color: "text-gray-400 bg-gray-400/10 border-gray-400/20",
+    icon: <Info size={14} />,
+  },
+};
+
+function ConfidenceBadge({ level }: { level: string }) {
+  const cfg = confidenceConfig[level] || confidenceConfig.medium;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-medium rounded-full border ${cfg.color}`}
+    >
+      {cfg.icon}
+      {level}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Evidence row                                                        */
+/* ------------------------------------------------------------------ */
+function EvidenceRow({ ev }: { ev: Evidence }) {
+  return (
+    <div className="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-colors">
+      <div className="w-1.5 h-1.5 rounded-full bg-t-primary mt-2 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-gray-300 leading-relaxed">
+          {ev.description}
+        </p>
+        {ev.file_path && (
+          <p className="text-xs text-gray-500 font-mono mt-0.5">
+            {ev.file_path}
+            {ev.function_name ? ` :: ${ev.function_name}` : ""}
+            {ev.line_start ? ` L${ev.line_start}` : ""}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Reasoning timeline                                                  */
+/* ------------------------------------------------------------------ */
+function ReasoningTimeline({
+  steps,
+}: {
+  steps: ReasoningStep[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (!steps?.length) return null;
+
+  return (
+    <div className="mt-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-300 transition-colors"
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        Reasoning Chain ({steps.length} steps)
+      </button>
+
+      {open && (
+        <div className="mt-3 ml-2 border-l border-t-border pl-4 space-y-4">
+          {steps.map((s) => (
+            <div key={s.step} className="relative">
+              <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-t-primary/60 border-2 border-t-bg" />
+              <p className="text-xs font-medium text-t-primary">Step {s.step}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{s.description}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Main component                                                      */
+/* ------------------------------------------------------------------ */
+interface Props {
+  result: QueryResult | null;
+  loading?: boolean;
+  className?: string;
+}
+
+export default function ResultPanel({ result, loading, className }: Props) {
+  if (loading) {
+    return (
+      <div className={`glass rounded-xl p-6 animate-pulse ${className}`}>
+        <div className="h-4 bg-gray-700/40 rounded w-3/4 mb-3" />
+        <div className="h-3 bg-gray-700/30 rounded w-1/2 mb-6" />
+        <div className="space-y-2">
+          <div className="h-3 bg-gray-700/20 rounded" />
+          <div className="h-3 bg-gray-700/20 rounded w-5/6" />
+          <div className="h-3 bg-gray-700/20 rounded w-2/3" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!result) return null;
+
+  return (
+    <div className={`glass rounded-xl overflow-hidden ${className}`}>
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-t-border/50">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-semibold text-gray-200">
+            Analysis Result
+          </h3>
+          <ConfidenceBadge level={result.confidence} />
+        </div>
+        <p className="text-sm text-gray-400 leading-relaxed">
+          {result.conclusion}
+        </p>
+      </div>
+
+      {/* Evidence */}
+      {result.evidence?.length > 0 && (
+        <div className="px-5 py-3 border-b border-t-border/30">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+            Evidence
+          </p>
+          <div className="space-y-0.5">
+            {result.evidence.map((ev, i) => (
+              <EvidenceRow key={i} ev={ev} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Reasoning */}
+      {result.reasoning_chain?.length > 0 && (
+        <div className="px-6 py-3">
+          <ReasoningTimeline steps={result.reasoning_chain} />
+        </div>
+      )}
+    </div>
+  );
+}

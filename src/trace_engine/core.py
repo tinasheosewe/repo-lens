@@ -81,6 +81,9 @@ class Trace:
     def hotspots(self, threshold: int = 3) -> QueryResult:
         return DependencyAnalyzer(self.graph).find_hotspots(threshold=threshold)
 
+    def coupling(self, threshold: int = 2) -> QueryResult:
+        return DependencyAnalyzer(self.graph).find_coupled_files(threshold=threshold)
+
     def search(self, query: str) -> QueryResult:
         return CodeNavigator(self.graph).search(query)
 

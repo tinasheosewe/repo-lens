@@ -121,3 +121,20 @@ def navigate(
         _trace(repo).path(from_name, to_name),
         title=f"Navigate: {from_name} → {to_name}",
     )
+
+@app.command()
+def serve(
+    repo: str = typer.Argument(".", help="Repository path"),
+    port: int = typer.Option(8000, help="Server port"),
+    host: str = typer.Option("127.0.0.1", help="Server host"),
+) -> None:
+    """Launch the Trace web UI."""
+    import uvicorn
+
+    from trace_engine.api.server import create_app
+
+    web_app = create_app(repo_path=repo)
+    console.print(
+        f"[bold]Trace[/bold] UI running at [cyan]http://{host}:{port}[/cyan]"
+    )
+    uvicorn.run(web_app, host=host, port=port, log_level="warning")
