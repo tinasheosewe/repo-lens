@@ -39,6 +39,16 @@ class PythonParser(BaseParser):
             return FileCategory.TEST.value
         return FileCategory.SOURCE.value
 
+    def module_names(self, file_path: str) -> set[str]:
+        if PurePosixPath(file_path).suffix != ".py":
+            return set()
+        module = file_path.replace("/", ".").replace("\\", ".")
+        module = module[:-3]
+        names = {module}
+        if module.endswith(".__init__"):
+            names.add(module[:-9])
+        return names
+
     def parse_file(self, file_path: str, content: str) -> ParseResult:
         try:
             tree = ast.parse(content, filename=file_path)
@@ -270,6 +280,7 @@ class _PythonVisitor(ast.NodeVisitor):
                 elif base_name in self._import_map:
                     self.unresolved_calls.append(
                         UnresolvedCall(
+                            source_file=self.file_path,
                             caller_id=node_id,
                             called_name=base_name,
                             import_info=self._import_map[base_name],
@@ -381,6 +392,7 @@ class _PythonVisitor(ast.NodeVisitor):
         elif called_name in self._import_map:
             self.unresolved_calls.append(
                 UnresolvedCall(
+                    source_file=self.file_path,
                     caller_id=caller_id,
                     called_name=called_name,
                     import_info=self._import_map[called_name],
@@ -408,6 +420,7 @@ class _PythonVisitor(ast.NodeVisitor):
             elif type_name in self._import_map:
                 self.unresolved_calls.append(
                     UnresolvedCall(
+                        source_file=self.file_path,
                         caller_id=caller_id,
                         called_name=full_call,
                         import_info=self._import_map[type_name],
@@ -421,6 +434,7 @@ class _PythonVisitor(ast.NodeVisitor):
         if root in self._import_map:
             self.unresolved_calls.append(
                 UnresolvedCall(
+                    source_file=self.file_path,
                     caller_id=caller_id,
                     called_name=f"{obj_ref}.{method_name}",
                     import_info=self._import_map[root],
@@ -439,4 +453,5 @@ class _PythonVisitor(ast.NodeVisitor):
             internal_edges=self.internal_edges,
             imports=self.imports,
             unresolved_calls=self.unresolved_calls,
+            exports=dict(self._local_defs),
         )

@@ -56,7 +56,8 @@ class FileClassifier:
     _TEST_DIR_NAMES: set[str] = {"tests", "test"}
     _TEST_CONTENT_MARKERS: tuple[str, ...] = (
         "import pytest", "from pytest", "import unittest", "from unittest",
-        "def test_", "class Test",
+        "def test_", "class Test", "describe(", "it(", "test(",
+        "from \"vitest\"", "from 'vitest'", "from \"jest\"", "from 'jest'",
     )
     _CATEGORY_PRIORITY: dict[FileCategory, int] = {
         FileCategory.TEST: 5,
@@ -81,6 +82,7 @@ class FileClassifier:
     _DOC_EXTENSIONS: set[str] = {".md", ".rst", ".txt"}
     _TEST_MARKERS: tuple[str, ...] = (
         "test_", "_test.py", "/tests/", "/test/", "conftest.py", "tests/",
+        "__tests__/", ".test.", ".spec.", ".cy.", "spec/",
     )
 
     def __init__(self, parsers: list[BaseParser] | None = None) -> None:

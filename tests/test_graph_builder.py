@@ -2,7 +2,10 @@
 
 import pytest
 
+from trace_engine.analysis.css_parser import CssParser
+from trace_engine.analysis.ecmascript_parser import JavaScriptParser, TypeScriptParser
 from trace_engine.analysis.graph_builder import GraphBuilder
+from trace_engine.analysis.html_parser import HtmlParser
 from trace_engine.analysis.python_parser import PythonParser
 from trace_engine.ingestion.classifier import FileClassifier
 from trace_engine.models.code_graph import CodeGraph
@@ -97,3 +100,46 @@ class TestCrossFileCalls:
         edges = sample_graph.get_edges_to(target_id, {EdgeType.CALLS})
         callers = {e.source_id for e in edges}
         assert any("get_user" in c for c in callers) or any("create_payment" in c for c in callers)
+
+
+class TestWebGraphBuilding:
+    def test_builds_mixed_language_graph(self):
+        files = {
+            "src/util.js": "export function foo() { return 1; }\n",
+            "src/app.js": "import { foo } from './util';\nexport function run() { return foo(); }\n",
+            "src/service.ts": "export class Api { ping() { return 1; } }\n",
+            "src/index.ts": "import { Api } from './service';\nconst api = new Api();\nexport const boot = () => api.ping();\n",
+            "web/index.html": "<html><head><link rel=\"stylesheet\" href=\"./styles.css\"><script src=\"./app.js\"></script></head><body><div id=\"app\" class=\"hero\"></div></body></html>",
+            "web/styles.css": "@import './base.css';\n.hero { color: red; }\n",
+            "web/base.css": "body { margin: 0; }\n",
+            "web/app.js": "import { run } from '../src/app.js';\nrun();\n",
+        }
+        parsers = [PythonParser(), JavaScriptParser(), TypeScriptParser(), HtmlParser(), CssParser()]
+        builder = GraphBuilder(parsers=parsers, classifier=FileClassifier(parsers=parsers))
+
+        graph = builder.build(files)
+
+        file_paths = {node.file_path for node in graph.get_nodes_by_type(NodeType.FILE)}
+        assert "web/index.html" in file_paths
+        assert "web/styles.css" in file_paths
+        assert "src/app.js" in file_paths
+        assert "src/index.ts" in file_paths
+
+        html_import_targets = {
+            edge.target_id
+            for edge in graph.get_edges_from("web/index.html", {EdgeType.IMPORTS})
+        }
+        assert "web/styles.css" in html_import_targets
+        assert "web/app.js" in html_import_targets
+
+        css_import_targets = {
+            edge.target_id
+            for edge in graph.get_edges_from("web/styles.css", {EdgeType.IMPORTS})
+        }
+        assert "web/base.css" in css_import_targets
+
+        js_callers = {edge.source_id for edge in graph.get_edges_to("src/util.js::foo", {EdgeType.CALLS})}
+        assert "src/app.js::run" in js_callers
+
+        ts_callers = {edge.source_id for edge in graph.get_edges_to("src/service.ts::Api.ping", {EdgeType.CALLS})}
+        assert "src/index.ts::boot" in ts_callers

@@ -2,6 +2,9 @@
 
 import pytest
 
+from trace_engine.analysis.css_parser import CssParser
+from trace_engine.analysis.ecmascript_parser import JavaScriptParser, TypeScriptParser
+from trace_engine.analysis.html_parser import HtmlParser
 from trace_engine.analysis.python_parser import PythonParser
 from trace_engine.ingestion.classifier import FileCategory, FileClassifier
 
@@ -9,6 +12,19 @@ from trace_engine.ingestion.classifier import FileCategory, FileClassifier
 @pytest.fixture
 def cls():
     return FileClassifier(parsers=[PythonParser()])
+
+
+@pytest.fixture
+def web_cls() -> FileClassifier:
+    return FileClassifier(
+        parsers=[
+            PythonParser(),
+            JavaScriptParser(),
+            TypeScriptParser(),
+            HtmlParser(),
+            CssParser(),
+        ]
+    )
 
 
 class TestSourceFiles:
@@ -73,3 +89,21 @@ class TestDocFiles:
 class TestUnknown:
     def test_binary(self, cls: FileClassifier):
         assert cls.classify("image.png") == FileCategory.UNKNOWN
+
+
+class TestWebFiles:
+    def test_typescript_source(self, web_cls: FileClassifier):
+        assert web_cls.classify("src/app.ts") == FileCategory.SOURCE
+
+    def test_javascript_test_file(self, web_cls: FileClassifier):
+        assert web_cls.classify("src/components/button.test.js") == FileCategory.TEST
+
+    def test_vitest_content_without_test_path(self, web_cls: FileClassifier):
+        content = "import { describe, it, expect } from 'vitest'\ndescribe('x', () => it('y', () => expect(true).toBe(true)))"
+        assert web_cls.classify("checks/ui.js", content=content) == FileCategory.TEST
+
+    def test_html_source(self, web_cls: FileClassifier):
+        assert web_cls.classify("web/index.html") == FileCategory.SOURCE
+
+    def test_css_source(self, web_cls: FileClassifier):
+        assert web_cls.classify("web/styles.css") == FileCategory.SOURCE

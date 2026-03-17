@@ -26,7 +26,7 @@ class GraphBuilder:
 
     def build(self, files: dict[str, str]) -> CodeGraph:
         graph = CodeGraph()
-        parse_results: list[ParseResult] = []
+        parse_results: list[tuple[BaseParser, ParseResult]] = []
 
         # Phase 1 — parse each file
         for file_path, content in files.items():
@@ -35,10 +35,10 @@ class GraphBuilder:
             if parser is None:
                 continue
             result = parser.parse_file(file_path, content)
-            parse_results.append(result)
+            parse_results.append((parser, result))
 
         # Phase 2 — add all nodes + internal edges
-        for result in parse_results:
+        for _parser, result in parse_results:
             for node in result.nodes:
                 if node.node_type == NodeType.FILE:
                     cat = self._classifier.classify(
@@ -51,14 +51,24 @@ class GraphBuilder:
                 graph.add_edge(edge)
 
         # Phase 3 — build module → file-path mapping
-        module_map = self._build_module_map(files.keys())
+        module_map = self._build_import_target_map(files.keys())
+        export_maps = {
+            result.file_path: dict(result.exports)
+            for _parser, result in parse_results
+        }
+        available_paths = set(files.keys())
 
         # Phase 4 — resolve import edges (file → file)
-        for result in parse_results:
+        for parser, result in parse_results:
             for imp in result.imports:
                 if imp.is_star:
                     continue
-                target_file = self._resolve_module(imp.module_path, module_map)
+                target_file = parser.resolve_import_target(
+                    result.file_path,
+                    imp.module_path,
+                    module_map,
+                    available_paths=available_paths,
+                )
                 if target_file and graph.has_node(target_file):
                     graph.add_edge(
                         GraphEdge(
@@ -72,9 +82,15 @@ class GraphBuilder:
                     )
 
         # Phase 5 — resolve cross-file calls
-        for result in parse_results:
+        for _parser, result in parse_results:
             for call in result.unresolved_calls:
-                target_id = self._resolve_call(call, module_map, graph)
+                target_id = self._resolve_call(
+                    call,
+                    module_map,
+                    graph,
+                    export_maps,
+                    available_paths=available_paths,
+                )
                 if target_id and graph.has_node(target_id):
                     graph.add_edge(
                         GraphEdge(
@@ -86,6 +102,16 @@ class GraphBuilder:
                     )
 
         return graph
+
+    def _build_import_target_map(self, file_paths: Iterable[str]) -> dict[str, str]:
+        module_map: dict[str, str] = {}
+        for file_path in file_paths:
+            parser = self._parsers.get(PurePosixPath(file_path).suffix)
+            if parser is None:
+                continue
+            for module_name in parser.module_names(file_path):
+                module_map.setdefault(module_name, file_path)
+        return module_map
 
     # ------------------------------------------------------------------
     # Module resolution
@@ -118,29 +144,51 @@ class GraphBuilder:
                 return fp
         return None
 
-    @staticmethod
     def _resolve_call(
+        self,
         call: UnresolvedCall,
         module_map: dict[str, str],
         graph: CodeGraph,
+        export_maps: dict[str, dict[str, str]],
+        *,
+        available_paths: set[str],
     ) -> str | None:
+        parser = self._parsers.get(PurePosixPath(call.source_file).suffix)
+        if parser is None:
+            return None
         imp = call.import_info
-        target_file = GraphBuilder._resolve_module(imp.module_path, module_map)
+        target_file = parser.resolve_import_target(
+            call.source_file,
+            imp.module_path,
+            module_map,
+            available_paths=available_paths,
+        )
         if target_file is None:
             return None
 
+        export_map = export_maps.get(target_file, {})
+
         called = call.called_name
+        candidates: list[str] = []
         if "." in called:
-            # Class.method  or  module.func
-            candidate = f"{target_file}::{called}"
-            if graph.has_node(candidate):
-                return candidate
-            # Fallback: try just the last part
-            last = called.rsplit(".", 1)[-1]
-            candidate2 = f"{target_file}::{last}"
-            if graph.has_node(candidate2):
-                return candidate2
-            return candidate  # return best guess even if not yet in graph
+            root, last = called.rsplit(".", 1)
+            if imp.original_name and imp.original_name not in {"*", None}:
+                candidates.extend([f"{imp.original_name}.{last}", imp.original_name])
+            if imp.is_star or imp.original_name == "*":
+                candidates.append(last)
+            candidates.extend([called, last, root])
         else:
             original = imp.original_name or called
-            return f"{target_file}::{original}"
+            candidates.extend([original, called])
+
+        seen: set[str] = set()
+        for candidate in candidates:
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            if candidate in export_map:
+                return export_map[candidate]
+            candidate_id = f"{target_file}::{candidate}"
+            if graph.has_node(candidate_id):
+                return candidate_id
+        return None

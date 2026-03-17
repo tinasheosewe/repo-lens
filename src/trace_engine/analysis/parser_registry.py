@@ -4,6 +4,9 @@ from collections.abc import Iterable
 
 from trace_engine.analysis.base_parser import BaseParser
 
+from .css_parser import CssParser
+from .ecmascript_parser import JavaScriptParser, TypeScriptParser
+from .html_parser import HtmlParser
 from .python_parser import PythonParser
 
 
@@ -11,7 +14,16 @@ class ParserRegistry:
     """Registry of all language parsers known to Trace."""
 
     def __init__(self, parsers: list[BaseParser] | None = None) -> None:
-        self._parsers = tuple(parsers or [PythonParser()])
+        self._parsers = tuple(
+            parsers
+            or [
+                PythonParser(),
+                JavaScriptParser(),
+                TypeScriptParser(),
+                HtmlParser(),
+                CssParser(),
+            ]
+        )
         self._parsers_by_language = {
             parser.language_name(): parser for parser in self._parsers
         }

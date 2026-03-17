@@ -21,6 +21,7 @@ class ImportInfo(BaseModel):
 class UnresolvedCall(BaseModel):
     """A function call whose target lives in another file."""
 
+    source_file: str
     caller_id: str
     called_name: str
     import_info: ImportInfo
@@ -35,6 +36,7 @@ class ParseResult(BaseModel):
     internal_edges: list[GraphEdge] = Field(default_factory=list)
     imports: list[ImportInfo] = Field(default_factory=list)
     unresolved_calls: list[UnresolvedCall] = Field(default_factory=list)
+    exports: dict[str, str] = Field(default_factory=dict)
 
 
 class BaseParser(ABC):
@@ -72,4 +74,25 @@ class BaseParser(ABC):
 
     def classify_file(self, file_path: str, content: str | None = None) -> str | None:
         """Return an optional file-category hint for *file_path*."""
+        return None
+
+    def module_names(self, file_path: str) -> set[str]:
+        """Return importable module names that map to *file_path*."""
+        return set()
+
+    def resolve_import_target(
+        self,
+        importer_path: str,
+        module_path: str,
+        module_map: dict[str, str],
+        *,
+        available_paths: set[str] | None = None,
+    ) -> str | None:
+        """Resolve an import specifier to a repository-relative file path."""
+        _ = importer_path, available_paths
+        if module_path in module_map:
+            return module_map[module_path]
+        for candidate, file_path in module_map.items():
+            if candidate.endswith(f".{module_path}") or candidate == module_path:
+                return file_path
         return None

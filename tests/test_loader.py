@@ -5,6 +5,9 @@ from pathlib import Path
 import pytest
 
 from trace_engine.analysis.base_parser import BaseParser, ParseResult
+from trace_engine.analysis.css_parser import CssParser
+from trace_engine.analysis.ecmascript_parser import JavaScriptParser, TypeScriptParser
+from trace_engine.analysis.html_parser import HtmlParser
 from trace_engine.analysis.python_parser import PythonParser
 from trace_engine.ingestion.loader import RepoLoader
 
@@ -81,14 +84,15 @@ class TestInspect:
         assert ".py" in inspection.active_extensions
 
     def test_unsupported_repo_rejected(self, loader: RepoLoader, tmp_path: Path):
-        (tmp_path / "package.json").write_text("{}")
-        (tmp_path / "index.ts").write_text("export const x = 1;")
+        (tmp_path / "pom.xml").write_text("<project />", encoding="utf-8")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "Main.java").write_text("class Main {}", encoding="utf-8")
 
         inspection = loader.inspect(tmp_path)
 
         assert inspection.supported is False
         assert inspection.supported_file_count == 0
-        assert ".ts" in inspection.detected_extensions
+        assert ".java" in inspection.detected_extensions
         assert inspection.detected_languages == []
         assert "supported language" in inspection.reason
 
@@ -111,3 +115,26 @@ class TestInspect:
         assert inspection.detected_languages == ["TypeScript"]
         assert ".ts" in inspection.active_extensions
         assert "project markers" in inspection.reason
+
+    def test_default_registry_supports_typescript_repos(self, tmp_path: Path):
+        (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "index.ts").write_text("export const run = () => 1;", encoding="utf-8")
+
+        inspection = RepoLoader().inspect(tmp_path)
+
+        assert inspection.supported is True
+        assert "TypeScript" in inspection.detected_languages
+        assert ".ts" in inspection.active_extensions
+
+    def test_default_registry_supports_html_css_and_javascript(self, tmp_path: Path):
+        (tmp_path / "index.html").write_text("<html><head><script src=\"./app.js\"></script><link rel=\"stylesheet\" href=\"./styles.css\"></head></html>", encoding="utf-8")
+        (tmp_path / "app.js").write_text("export function boot() { return 1; }", encoding="utf-8")
+        (tmp_path / "styles.css").write_text(".hero { color: red; }", encoding="utf-8")
+
+        inspection = RepoLoader().inspect(tmp_path)
+
+        assert inspection.supported is True
+        assert "HTML" in inspection.detected_languages
+        assert "JavaScript" in inspection.detected_languages
+        assert "CSS" in inspection.detected_languages
