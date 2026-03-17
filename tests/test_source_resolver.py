@@ -28,6 +28,25 @@ def _git(*args: str, cwd: Path | None = None) -> None:
 
 
 class TestRepoSourceResolver:
+    def test_formats_private_repo_auth_error(self):
+        message = RepoSourceResolver._format_git_error(
+            "https://github.com/example/private.git",
+            "Cloning into '/tmp/private'...\nfatal: could not read Username for 'https://github.com': No such device or address",
+        )
+
+        assert "authentication failed" in message
+        assert "private repository" in message
+        assert "git credentials/token access" in message
+
+    def test_formats_repository_not_found_error(self):
+        message = RepoSourceResolver._format_git_error(
+            "https://github.com/example/missing.git",
+            "remote: Repository not found.\nfatal: repository 'https://github.com/example/missing.git/' not found",
+        )
+
+        assert "repository not found or not accessible" in message
+        assert "permission to access it" in message
+
     def test_resolves_local_directory(self, tmp_path: Path):
         resolver = RepoSourceResolver()
         resolved = resolver.resolve(str(tmp_path))

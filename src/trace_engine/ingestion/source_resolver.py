@@ -357,4 +357,29 @@ class RepoSourceResolver:
             return
 
         stderr = proc.stderr.strip() or proc.stdout.strip() or "unknown git error"
-        raise RuntimeError(f"Unable to fetch repository '{source}': {stderr}")
+        raise RuntimeError(RepoSourceResolver._format_git_error(source, stderr))
+
+    @staticmethod
+    def _format_git_error(source: str, raw_error: str) -> str:
+        normalized = raw_error.lower()
+
+        if (
+            "could not read username" in normalized
+            or "authentication failed" in normalized
+            or "permission denied (publickey)" in normalized
+            or "permission denied (keyboard-interactive)" in normalized
+            or "fatal: could not read from remote repository" in normalized
+        ):
+            return (
+                f"Unable to fetch repository '{source}': authentication failed. "
+                "If this is a private repository, provide a clone URL that already includes access credentials "
+                "or configure git credentials/token access in this environment."
+            )
+
+        if "repository not found" in normalized:
+            return (
+                f"Unable to fetch repository '{source}': repository not found or not accessible. "
+                "Check that the URL is correct and that this environment has permission to access it."
+            )
+
+        return f"Unable to fetch repository '{source}': {raw_error}"
