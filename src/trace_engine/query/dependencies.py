@@ -135,5 +135,5 @@ class DependencyAnalyzer:
         return QueryResult(
             conclusion=f"Found {len(coupled)} tightly-coupled file pair(s).",
             evidence=evidence,
-            confidence=Confidence.MEDIUM,
+            confidence=Confidence.HIGH if not coupled else Confidence.MEDIUM,
         )

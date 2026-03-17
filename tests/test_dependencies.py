@@ -3,6 +3,7 @@
 import pytest
 
 from trace_engine.models.code_graph import CodeGraph
+from trace_engine.models.evidence import Confidence
 from trace_engine.models.graph import EdgeType, GraphEdge, GraphNode, NodeType
 from trace_engine.query.dependencies import DependencyAnalyzer
 
@@ -70,3 +71,4 @@ class TestCoupledFiles:
         analyzer = DependencyAnalyzer(sample_graph)
         result = analyzer.find_coupled_files(threshold=100)
         assert len(result.evidence) == 0
+        assert result.confidence == Confidence.HIGH
