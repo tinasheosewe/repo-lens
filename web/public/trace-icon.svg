@@ -1,0 +1,40 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="256" rx="64" fill="#090B16"/>
+  <rect x="18" y="18" width="220" height="220" rx="46" fill="url(#panelGlow)" fill-opacity="0.18" stroke="url(#frameStroke)" stroke-width="2"/>
+  <circle cx="118" cy="118" r="56" fill="url(#lensFill)" stroke="url(#lensStroke)" stroke-width="12"/>
+  <path d="M154 154L193 193" stroke="url(#handleStroke)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M89 97L108 82L127 97L146 82" stroke="#C7D2FE" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M89 118L108 133L127 118L146 133" stroke="#7DD3FC" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M89 139L108 124L127 139L146 124" stroke="#A78BFA" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="108" cy="82" r="7" fill="#F8FAFC"/>
+  <circle cx="127" cy="97" r="7" fill="#7DD3FC"/>
+  <circle cx="146" cy="82" r="7" fill="#C4B5FD"/>
+  <circle cx="108" cy="133" r="7" fill="#C4B5FD"/>
+  <circle cx="127" cy="118" r="7" fill="#F8FAFC"/>
+  <circle cx="146" cy="133" r="7" fill="#7DD3FC"/>
+  <defs>
+    <linearGradient id="panelGlow" x1="40" y1="28" x2="212" y2="228" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="0.52" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#22C55E"/>
+    </linearGradient>
+    <linearGradient id="frameStroke" x1="28" y1="20" x2="222" y2="238" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9" stop-opacity="0.7"/>
+      <stop offset="0.48" stop-color="#A78BFA" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#34D399" stop-opacity="0.55"/>
+    </linearGradient>
+    <linearGradient id="lensFill" x1="73" y1="67" x2="166" y2="174" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#131A33"/>
+    </linearGradient>
+    <linearGradient id="lensStroke" x1="76" y1="70" x2="160" y2="165" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7DD3FC"/>
+      <stop offset="0.45" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <linearGradient id="handleStroke" x1="157" y1="158" x2="196" y2="193" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+  </defs>
+</svg>

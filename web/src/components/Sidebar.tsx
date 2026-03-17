@@ -1,5 +1,4 @@
 import {
-  Activity,
   AlertTriangle,
   BookOpen,
   Compass,
@@ -42,12 +41,19 @@ export default function Sidebar({ activePage, onNavigate, status }: Props) {
     <aside className="w-60 h-full flex flex-col border-r border-t-border bg-t-surface shrink-0">
       {/* Logo */}
       <div className="px-5 py-6 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-t-primary to-t-accent flex items-center justify-center">
-          <Activity size={16} className="text-white" />
+        <img
+          src="/trace-icon.svg"
+          alt="Trace"
+          className="h-10 w-10 shrink-0 rounded-xl border border-white/10 bg-[#090B16] p-1 shadow-[0_0_24px_rgba(129,140,248,0.18)]"
+        />
+        <div>
+          <span className="block text-lg font-bold tracking-tight gradient-text">
+            Trace
+          </span>
+          <span className="block text-[11px] uppercase tracking-[0.22em] text-gray-500">
+            RepoLens
+          </span>
         </div>
-        <span className="text-lg font-bold tracking-tight gradient-text">
-          Trace
-        </span>
       </div>
 
       {/* Nav */}

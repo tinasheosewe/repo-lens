@@ -38,6 +38,11 @@ export default function App() {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center animate-fade-in">
+          <img
+            src="/trace-icon.svg"
+            alt="Trace"
+            className="mx-auto mb-4 h-16 w-16 rounded-2xl border border-white/10 bg-[#090B16] p-2 shadow-[0_0_40px_rgba(129,140,248,0.22)]"
+          />
           <h1 className="text-3xl font-bold gradient-text mb-2">Trace</h1>
           <p className="text-gray-500 text-sm">Loading…</p>
         </div>
