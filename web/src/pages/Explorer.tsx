@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { Search, Route, ArrowRight, CornerDownLeft, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, Route, ArrowRight, CornerDownLeft } from "lucide-react";
 import { api } from "../api/client";
 import type { Evidence, QueryResult } from "../types";
 import ResultPanel from "../components/ResultPanel";
@@ -46,18 +46,26 @@ function getPathDetails(result: QueryResult | null): PathNodeDetail[][] {
     .filter((path) => path.length > 0);
 }
 
-function PathNodeCard({ node }: { node: PathNodeDetail }) {
-  const [open, setOpen] = useState(false);
-  const expandable = !!node.code_snippet;
-
+function PathNodeCard({
+  node,
+  selected,
+  onSelect,
+}: {
+  node: PathNodeDetail;
+  selected: boolean;
+  onSelect: () => void;
+}) {
   return (
-    <div className="rounded-xl border border-t-border/40 bg-gray-950/35 overflow-hidden min-w-[220px] max-w-[280px]">
-      <button
-        type="button"
-        disabled={!expandable}
-        onClick={() => expandable && setOpen((value) => !value)}
-        className={`w-full px-4 py-3 text-left ${expandable ? "cursor-pointer" : "cursor-default"}`}
-      >
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-[320px] shrink-0 rounded-xl border overflow-hidden text-left transition-colors md:w-[360px] ${
+        selected
+          ? "border-cyan-400/40 bg-cyan-500/10"
+          : "border-t-border/40 bg-gray-950/35 hover:border-cyan-500/25 hover:bg-gray-950/55"
+      }`}
+    >
+      <div className="px-4 py-3">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cyan-500/15 text-[11px] font-semibold text-cyan-300">
             {node.step}
@@ -70,27 +78,18 @@ function PathNodeCard({ node }: { node: PathNodeDetail }) {
               {node.line_start ? `:${node.line_start}` : ""}
             </div>
           </div>
-          {expandable && (
-            <span className="mt-0.5 text-gray-500 shrink-0">
-              {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </span>
-          )}
         </div>
-      </button>
-      {expandable && open && (
-        <div className="border-t border-t-border/30 bg-black/20 px-4 py-3">
-          <div className="mb-2 text-[11px] uppercase tracking-wider text-gray-500">Source Detail</div>
-          <pre className="overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-gray-300 font-mono">
-            {node.code_snippet}
-          </pre>
-        </div>
-      )}
-    </div>
+      </div>
+      <div className="border-t border-t-border/30 px-4 py-2 text-[11px] text-gray-500">
+        {node.code_snippet ? "Click to inspect source below" : "No source snippet available"}
+      </div>
+    </button>
   );
 }
 
 function PathResultPanel({ result }: { result: QueryResult }) {
   const pathDetails = getPathDetails(result);
+  const [selectedNodes, setSelectedNodes] = useState<Record<number, string>>({});
 
   if (!pathDetails.length) {
     return <ResultPanel result={result} />;
@@ -109,6 +108,11 @@ function PathResultPanel({ result }: { result: QueryResult }) {
       <div className="px-5 py-5 space-y-4">
         {pathDetails.map((path, pathIndex) => (
           <div key={path[0]?.id ?? pathIndex} className="rounded-xl border border-cyan-500/10 bg-cyan-500/5 p-4">
+            {(() => {
+              const selectedNode = path.find((node) => node.id === selectedNodes[pathIndex]) ?? path[0];
+
+              return (
+                <>
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <div className="text-xs uppercase tracking-wider text-cyan-300">Path {pathIndex + 1}</div>
@@ -121,18 +125,58 @@ function PathResultPanel({ result }: { result: QueryResult }) {
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-stretch">
-              {path.map((node, index) => (
-                <div key={node.id} className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                  <PathNodeCard node={node} />
+            <div className="overflow-x-auto pb-3">
+              <div className="flex min-w-max items-stretch gap-3">
+                {path.map((node, index) => (
+                  <div key={node.id} className="flex items-center gap-3">
+                    <PathNodeCard
+                      node={node}
+                      selected={selectedNode.id === node.id}
+                      onSelect={() =>
+                        setSelectedNodes((current) => ({
+                          ...current,
+                          [pathIndex]: node.id,
+                        }))
+                      }
+                    />
                   {index < path.length - 1 && (
-                    <div className="flex items-center justify-center text-cyan-300/70 px-1">
-                      <ArrowRight size={18} />
-                    </div>
-                  )}
-                </div>
-              ))}
+                      <div className="flex shrink-0 items-center justify-center text-cyan-300/70 px-1">
+                        <ArrowRight size={18} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
+
+            <div className="rounded-xl border border-t-border/40 bg-gray-950/45 overflow-hidden">
+              <div className="px-4 py-3 border-b border-t-border/30">
+                <div className="text-[11px] uppercase tracking-wider text-gray-500">Selected Step</div>
+                <div className="mt-1 flex items-center gap-2 text-sm text-gray-200">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/15 text-[11px] font-semibold text-cyan-300">
+                    {selectedNode.step}
+                  </span>
+                  <span>{selectedNode.name}</span>
+                </div>
+                <div className="mt-1 text-[11px] font-mono text-gray-500 break-all">
+                  {selectedNode.file_path}
+                  {selectedNode.line_start ? `:${selectedNode.line_start}` : ""}
+                </div>
+              </div>
+
+              {selectedNode.code_snippet ? (
+                <pre className="overflow-x-auto px-4 py-4 whitespace-pre-wrap text-xs leading-6 text-gray-300 font-mono">
+                  {selectedNode.code_snippet}
+                </pre>
+              ) : (
+                <div className="px-4 py-4 text-sm text-gray-500">
+                  No source snippet is available for this node.
+                </div>
+              )}
+            </div>
+                </>
+              );
+            })()}
           </div>
         ))}
       </div>
