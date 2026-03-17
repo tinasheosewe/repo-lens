@@ -81,6 +81,8 @@ class CodeNavigator:
 
         evidence: list[Evidence] = []
         reasoning: list[ReasoningStep] = []
+        path_details: list[list[dict[str, object]]] = []
+        seen_node_ids: set[str] = set()
 
         for idx, path in enumerate(paths, start=1):
             readable = " → ".join(
@@ -89,9 +91,27 @@ class CodeNavigator:
             reasoning.append(
                 ReasoningStep(step=idx, description=f"Path {idx}: {readable}")
             )
-            for nid in path:
+            current_path_details: list[dict[str, object]] = []
+            for step_index, nid in enumerate(path, start=1):
                 node = self._graph.get_node(nid)
-                if node and node.id not in {e.file_path for e in evidence}:
+                if not node:
+                    continue
+
+                current_path_details.append(
+                    {
+                        "id": node.id,
+                        "name": node.name,
+                        "node_type": node.node_type.value,
+                        "file_path": node.file_path,
+                        "line_start": node.line_start,
+                        "line_end": node.line_end,
+                        "code_snippet": self._snippets.for_node(node),
+                        "step": step_index,
+                        "step_count": len(path),
+                    }
+                )
+
+                if node.id not in seen_node_ids:
                     evidence.append(
                         Evidence(
                             file_path=node.file_path,
@@ -99,9 +119,12 @@ class CodeNavigator:
                             line_start=node.line_start,
                             line_end=node.line_end,
                             code_snippet=self._snippets.for_node(node),
-                            description=f"Part of path {idx}",
+                            description=f"Appears in path {idx} at step {step_index} of {len(path)}",
                         )
                     )
+                    seen_node_ids.add(node.id)
+
+            path_details.append(current_path_details)
 
         return QueryResult(
             conclusion=f"Found {len(paths)} path(s) from '{from_name}' to '{to_name}'.",
@@ -109,7 +132,7 @@ class CodeNavigator:
             reasoning_chain=reasoning,
             confidence=Confidence.HIGH,
             affected_nodes=[nid for path in paths for nid in path],
-            metadata={"paths": paths},
+            metadata={"paths": paths, "path_details": path_details},
         )
 
     @staticmethod

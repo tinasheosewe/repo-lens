@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { Search, Route, ArrowRight, CornerDownLeft } from "lucide-react";
+import { Search, Route, ArrowRight, CornerDownLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { api } from "../api/client";
 import type { Evidence, QueryResult } from "../types";
 import ResultPanel from "../components/ResultPanel";
@@ -9,6 +9,135 @@ function getEvidenceLabel(ev: Evidence): string {
 
   const [, ...rest] = ev.description.split(": ");
   return rest.join(": ") || ev.file_path;
+}
+
+interface PathNodeDetail {
+  id: string;
+  name: string;
+  node_type: string;
+  file_path: string;
+  line_start: number | null;
+  line_end: number | null;
+  code_snippet: string | null;
+  step: number;
+  step_count: number;
+}
+
+function isPathNodeDetail(value: unknown): value is PathNodeDetail {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.file_path === "string" &&
+    typeof candidate.step === "number" &&
+    typeof candidate.step_count === "number"
+  );
+}
+
+function getPathDetails(result: QueryResult | null): PathNodeDetail[][] {
+  const raw = result?.metadata?.path_details;
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((path) =>
+      Array.isArray(path) ? path.filter(isPathNodeDetail) : [],
+    )
+    .filter((path) => path.length > 0);
+}
+
+function PathNodeCard({ node }: { node: PathNodeDetail }) {
+  const [open, setOpen] = useState(false);
+  const expandable = !!node.code_snippet;
+
+  return (
+    <div className="rounded-xl border border-t-border/40 bg-gray-950/35 overflow-hidden min-w-[220px] max-w-[280px]">
+      <button
+        type="button"
+        disabled={!expandable}
+        onClick={() => expandable && setOpen((value) => !value)}
+        className={`w-full px-4 py-3 text-left ${expandable ? "cursor-pointer" : "cursor-default"}`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cyan-500/15 text-[11px] font-semibold text-cyan-300">
+            {node.step}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs uppercase tracking-wider text-gray-500">{node.node_type}</div>
+            <div className="text-sm font-medium text-gray-200 break-words">{node.name}</div>
+            <div className="mt-1 text-[11px] font-mono text-gray-500 break-all">
+              {node.file_path}
+              {node.line_start ? `:${node.line_start}` : ""}
+            </div>
+          </div>
+          {expandable && (
+            <span className="mt-0.5 text-gray-500 shrink-0">
+              {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </span>
+          )}
+        </div>
+      </button>
+      {expandable && open && (
+        <div className="border-t border-t-border/30 bg-black/20 px-4 py-3">
+          <div className="mb-2 text-[11px] uppercase tracking-wider text-gray-500">Source Detail</div>
+          <pre className="overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-gray-300 font-mono">
+            {node.code_snippet}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PathResultPanel({ result }: { result: QueryResult }) {
+  const pathDetails = getPathDetails(result);
+
+  if (!pathDetails.length) {
+    return <ResultPanel result={result} />;
+  }
+
+  return (
+    <div className="glass rounded-xl overflow-hidden">
+      <div className="px-6 py-4 border-b border-t-border/50">
+        <h3 className="text-sm font-semibold text-gray-200">Resolved Paths</h3>
+        <p className="mt-1 text-sm text-gray-400 leading-relaxed">{result.conclusion}</p>
+        <p className="mt-3 text-xs text-gray-500">
+          Read each lane from left to right. Each card is one symbol in the call chain, and the arrows show the order of execution through the path.
+        </p>
+      </div>
+
+      <div className="px-5 py-5 space-y-4">
+        {pathDetails.map((path, pathIndex) => (
+          <div key={path[0]?.id ?? pathIndex} className="rounded-xl border border-cyan-500/10 bg-cyan-500/5 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-cyan-300">Path {pathIndex + 1}</div>
+                <div className="text-sm text-gray-400">
+                  {path.length} step{path.length === 1 ? "" : "s"}
+                </div>
+              </div>
+              <div className="text-xs text-gray-500">
+                {path.map((node) => node.name).join(" -> ")}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-stretch">
+              {path.map((node, index) => (
+                <div key={node.id} className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                  <PathNodeCard node={node} />
+                  {index < path.length - 1 && (
+                    <div className="flex items-center justify-center text-cyan-300/70 px-1">
+                      <ArrowRight size={18} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 interface SymbolPickerProps {
@@ -302,7 +431,11 @@ export default function Explorer() {
           </div>
         </div>
 
-        <ResultPanel result={pathResult} loading={pathLoading} />
+        {pathLoading ? (
+          <ResultPanel result={null} loading />
+        ) : pathResult ? (
+          <PathResultPanel result={pathResult} />
+        ) : null}
       </section>
     </div>
   );
