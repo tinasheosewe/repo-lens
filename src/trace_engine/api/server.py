@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -17,6 +17,40 @@ from trace_engine.models.evidence import QueryResult
 # ---------------------------------------------------------------------------
 
 _trace: Trace | None = None
+
+
+class IngestRequest(BaseModel):
+    source: str
+    ref: str | None = None
+
+
+class StatusResponse(BaseModel):
+    loaded: bool
+    repo_path: str | None = None
+    repo_source: str | None = None
+    repo_source_type: str | None = None
+    repo_ref: str | None = None
+    node_count: int = 0
+    edge_count: int = 0
+
+
+class AboutResponse(BaseModel):
+    product_name: str
+    supported_languages: list[str]
+    supported_extensions: list[str]
+    ignored_directories: list[str]
+    summary: str
+
+
+class RepoSupportResponse(BaseModel):
+    source: str
+    source_type: str
+    ref: str | None
+    resolved_path: str
+    supported: bool
+    reason: str
+    supported_file_count: int
+    detected_extensions: list[str]
 
 
 def _get_trace() -> Trace:
@@ -41,36 +75,6 @@ def create_app(repo_path: str | None = None) -> FastAPI:
     # -----------------------------------------------------------------------
     # Routes
     # -----------------------------------------------------------------------
-
-    class IngestRequest(BaseModel):
-        source: str
-        ref: str | None = None
-
-    class StatusResponse(BaseModel):
-        loaded: bool
-        repo_path: str | None = None
-        repo_source: str | None = None
-        repo_source_type: str | None = None
-        repo_ref: str | None = None
-        node_count: int = 0
-        edge_count: int = 0
-
-    class AboutResponse(BaseModel):
-        product_name: str
-        supported_languages: list[str]
-        supported_extensions: list[str]
-        ignored_directories: list[str]
-        summary: str
-
-    class RepoSupportResponse(BaseModel):
-        source: str
-        source_type: str
-        ref: str | None
-        resolved_path: str
-        supported: bool
-        reason: str
-        supported_file_count: int
-        detected_extensions: list[str]
 
     loader = RepoLoader()
     source_resolver = RepoSourceResolver()
@@ -122,7 +126,7 @@ def create_app(repo_path: str | None = None) -> FastAPI:
             )
 
     @app.post("/api/ingest", response_model=StatusResponse)
-    def ingest(req: IngestRequest):
+    def ingest(req: IngestRequest = Body(...)):
         resolved, inspection = inspect_repo(req.source, ref=req.ref)
         if not inspection.supported:
             raise HTTPException(400, inspection.reason)

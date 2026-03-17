@@ -8,15 +8,47 @@ import type {
   StatusResponse,
 } from "../types";
 
-const BASE = "/api";
+function resolveApiBase(): string {
+  const explicitBase = import.meta.env.VITE_API_BASE;
+  if (explicitBase) {
+    return explicitBase.replace(/\/$/, "");
+  }
+
+  if (typeof window !== "undefined") {
+    const { hostname, port, protocol } = window.location;
+    if ((hostname === "127.0.0.1" || hostname === "localhost") && port === "5173") {
+      return `${protocol}//127.0.0.1:8000/api`;
+    }
+  }
+
+  return "/api";
+}
+
+const BASE = resolveApiBase();
+
+async function parseResponse<T>(res: Response): Promise<T> {
+  const contentType = res.headers.get("content-type") || "";
+
+  if (!contentType.includes("application/json")) {
+    const bodyText = await res.text();
+    throw new Error(
+      `Expected JSON from API but received ${contentType || "unknown content type"}: ${bodyText.slice(0, 120)}`,
+    );
+  }
+
+  return res.json() as Promise<T>;
+}
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || res.statusText);
+    const body = await parseResponse<{ detail?: string } | { detail?: Array<{ msg?: string }> }>(res).catch(() => ({}));
+    const detail = Array.isArray((body as { detail?: Array<{ msg?: string }> }).detail)
+      ? (body as { detail?: Array<{ msg?: string }> }).detail?.map((item) => item.msg).filter(Boolean).join("; ")
+      : (body as { detail?: string }).detail;
+    throw new Error(detail || res.statusText);
   }
-  return res.json();
+  return parseResponse<T>(res);
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
@@ -26,10 +58,13 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || res.statusText);
+    const data = await parseResponse<{ detail?: string } | { detail?: Array<{ msg?: string }> }>(res).catch(() => ({}));
+    const detail = Array.isArray((data as { detail?: Array<{ msg?: string }> }).detail)
+      ? (data as { detail?: Array<{ msg?: string }> }).detail?.map((item) => item.msg).filter(Boolean).join("; ")
+      : (data as { detail?: string }).detail;
+    throw new Error(detail || res.statusText);
   }
-  return res.json();
+  return parseResponse<T>(res);
 }
 
 export const api = {
