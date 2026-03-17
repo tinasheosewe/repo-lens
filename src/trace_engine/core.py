@@ -61,31 +61,31 @@ class Trace:
     # ------------------------------------------------------------------
 
     def impact(self, name: str) -> QueryResult:
-        return ImpactAnalyzer(self.graph).analyze_by_name(name)
+        return ImpactAnalyzer(self.graph, repo_root=self.repo_path).analyze_by_name(name)
 
     def dependents(self, name: str) -> QueryResult:
-        return QueryEngine(self.graph).find_dependents(name)
+        return QueryEngine(self.graph, repo_root=self.repo_path).find_dependents(name)
 
     def usages(self, name: str) -> QueryResult:
-        return QueryEngine(self.graph).find_usages(name)
+        return QueryEngine(self.graph, repo_root=self.repo_path).find_usages(name)
 
     def dead_code(self) -> QueryResult:
         return DeadCodeDetector(self.graph, repo_root=self.repo_path).detect()
 
     def endpoints(self) -> QueryResult:
-        return QueryEngine(self.graph).list_endpoints()
+        return QueryEngine(self.graph, repo_root=self.repo_path).list_endpoints()
 
     def cycles(self) -> QueryResult:
-        return DependencyAnalyzer(self.graph).find_circular_dependencies()
+        return DependencyAnalyzer(self.graph, repo_root=self.repo_path).find_circular_dependencies()
 
     def hotspots(self, threshold: int = 3) -> QueryResult:
-        return DependencyAnalyzer(self.graph).find_hotspots(threshold=threshold)
+        return DependencyAnalyzer(self.graph, repo_root=self.repo_path).find_hotspots(threshold=threshold)
 
     def coupling(self, threshold: int = 2) -> QueryResult:
-        return DependencyAnalyzer(self.graph).find_coupled_files(threshold=threshold)
+        return DependencyAnalyzer(self.graph, repo_root=self.repo_path).find_coupled_files(threshold=threshold)
 
     def search(self, query: str) -> QueryResult:
-        return CodeNavigator(self.graph).search(query)
+        return CodeNavigator(self.graph, repo_root=self.repo_path).search(query)
 
     def path(self, from_name: str, to_name: str) -> QueryResult:
-        return CodeNavigator(self.graph).find_path(from_name, to_name)
+        return CodeNavigator(self.graph, repo_root=self.repo_path).find_path(from_name, to_name)

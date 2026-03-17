@@ -42,21 +42,48 @@ function ConfidenceBadge({ level }: { level: string }) {
 /* Evidence row                                                        */
 /* ------------------------------------------------------------------ */
 function EvidenceRow({ ev }: { ev: Evidence }) {
+  const [open, setOpen] = useState(false);
+  const expandable = !!ev.code_snippet;
+
   return (
-    <div className="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-colors">
-      <div className="w-1.5 h-1.5 rounded-full bg-t-primary mt-2 shrink-0" />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm text-gray-300 leading-relaxed">
-          {ev.description}
-        </p>
-        {ev.file_path && (
-          <p className="text-xs text-gray-500 font-mono mt-0.5">
-            {ev.file_path}
-            {ev.function_name ? ` :: ${ev.function_name}` : ""}
-            {ev.line_start ? ` L${ev.line_start}` : ""}
+    <div className="rounded-lg hover:bg-white/[0.03] transition-colors">
+      <button
+        type="button"
+        disabled={!expandable}
+        onClick={() => expandable && setOpen((value) => !value)}
+        className={`w-full flex items-start gap-3 py-2 px-3 text-left ${
+          expandable ? "cursor-pointer" : "cursor-default"
+        }`}
+      >
+        <div className="w-1.5 h-1.5 rounded-full bg-t-primary mt-2 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-gray-300 leading-relaxed">
+            {ev.description}
           </p>
+          {ev.file_path && (
+            <p className="text-xs text-gray-500 font-mono mt-0.5">
+              {ev.file_path}
+              {ev.function_name ? ` :: ${ev.function_name}` : ""}
+              {ev.line_start ? ` L${ev.line_start}` : ""}
+            </p>
+          )}
+        </div>
+        {expandable && (
+          <span className="text-gray-500 mt-0.5 shrink-0">
+            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
         )}
-      </div>
+      </button>
+      {expandable && open && (
+        <div className="mx-3 mb-3 ml-8 rounded-lg border border-t-border/40 bg-gray-950/50 overflow-hidden">
+          <div className="px-4 py-2 text-[11px] uppercase tracking-wider text-gray-500 border-b border-t-border/30">
+            Source Detail
+          </div>
+          <pre className="overflow-x-auto px-4 py-3 text-xs leading-6 text-gray-300 font-mono whitespace-pre-wrap">
+            {ev.code_snippet}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }

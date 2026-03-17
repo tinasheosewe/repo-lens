@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, Flame, Link2 } from "lucide-react";
+import { RefreshCw, Flame, Link2, ChevronDown, ChevronRight } from "lucide-react";
 import { api } from "../api/client";
-import type { QueryResult } from "../types";
+import type { Evidence, QueryResult } from "../types";
 import ResultPanel from "../components/ResultPanel";
 
 /* ------------------------------------------------------------------ */
@@ -38,24 +38,58 @@ function TabBtn({
 /* ------------------------------------------------------------------ */
 /* Cycle visualization                                                 */
 /* ------------------------------------------------------------------ */
-function CycleCard({ ev }: { ev: { description: string; location?: string } }) {
+function CycleCard({ ev }: { ev: Evidence }) {
   const parts = ev.description.split(" → ");
+  const [open, setOpen] = useState(false);
+  const expandable = !!ev.code_snippet;
+
   return (
     <div className="glass rounded-xl p-4 hover:border-t-primary/20 transition-colors">
-      <div className="flex items-center flex-wrap gap-1.5">
-        {parts.map((p, i) => (
-          <span key={i} className="flex items-center gap-1.5">
-            <span className="text-xs font-mono text-gray-200 bg-gray-800 px-2 py-0.5 rounded">
-              {p}
+      <button
+        type="button"
+        onClick={() => expandable && setOpen((value) => !value)}
+        disabled={!expandable}
+        className={`w-full text-left ${expandable ? "cursor-pointer" : "cursor-default"}`}
+      >
+        <div className="flex items-start gap-2">
+          {expandable && (
+            <span className="mt-0.5 text-gray-500 shrink-0">
+              {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </span>
-            {i < parts.length - 1 && (
-              <RefreshCw size={10} className="text-amber-400" />
-            )}
-          </span>
-        ))}
-      </div>
+          )}
+          <div className="flex items-center flex-wrap gap-1.5">
+            {parts.map((p, i) => (
+              <span key={i} className="flex items-center gap-1.5">
+                <span className="text-xs font-mono text-gray-200 bg-gray-800 px-2 py-0.5 rounded">
+                  {p}
+                </span>
+                {i < parts.length - 1 && (
+                  <RefreshCw size={10} className="text-amber-400" />
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      </button>
+      {expandable && open && (
+        <div className="mt-4 ml-6 rounded-lg border border-t-border/40 bg-gray-950/50 overflow-hidden">
+          <div className="px-4 py-2 text-[11px] uppercase tracking-wider text-gray-500 border-b border-t-border/30">
+            Cycle Detail
+          </div>
+          <pre className="overflow-x-auto px-4 py-3 text-xs leading-6 text-gray-300 font-mono whitespace-pre-wrap">
+            {ev.code_snippet}
+          </pre>
+        </div>
+      )}
     </div>
   );
+}
+
+function parseHotspotCount(description: string): number {
+  const values = [...description.matchAll(/fan-(?:in|out)=(\d+)/g)].map((match) =>
+    parseInt(match[1], 10),
+  );
+  return values.reduce((max, value) => Math.max(max, value), 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -65,35 +99,65 @@ function HotspotRow({
   ev,
   maxCount,
 }: {
-  ev: { description: string; location?: string };
+  ev: Evidence;
   maxCount: number;
 }) {
-  // Try to parse count from description e.g. "module (fan-in: 5)"
-  const match = ev.description.match(/\((\d+)\s/);
-  const count = match ? parseInt(match[1]) : 1;
+  const [open, setOpen] = useState(false);
+  const count = parseHotspotCount(ev.description);
   const pct = maxCount > 0 ? (count / maxCount) * 100 : 20;
+  const expandable = !!ev.code_snippet;
 
   return (
-    <div className="py-2.5 px-4 hover:bg-white/[0.02] transition-colors">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-mono text-gray-300">
-          {ev.description}
-        </span>
-        {ev.location && (
-          <span className="text-[10px] text-gray-600 font-mono">
-            {ev.location}
-          </span>
-        )}
-      </div>
-      <div className="h-1 rounded-full bg-gray-800 overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-700"
-          style={{
-            width: `${Math.max(pct, 8)}%`,
-            background: `linear-gradient(90deg, #f97316, #ef4444)`,
-          }}
-        />
-      </div>
+    <div className="hover:bg-white/[0.02] transition-colors">
+      <button
+        type="button"
+        onClick={() => expandable && setOpen((value) => !value)}
+        disabled={!expandable}
+        className={`w-full py-2.5 px-4 text-left ${expandable ? "cursor-pointer" : "cursor-default"}`}
+      >
+        <div className="flex items-start gap-2">
+          {expandable && (
+            <span className="mt-0.5 text-gray-500 shrink-0">
+              {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </span>
+          )}
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-1 gap-4">
+              <span className="text-xs font-mono text-gray-300">
+                {ev.function_name || ev.description}
+              </span>
+              <span className="text-[10px] text-gray-600 font-mono shrink-0">
+                {ev.file_path}
+                {ev.line_start ? `:${ev.line_start}` : ""}
+              </span>
+            </div>
+            {ev.function_name && (
+              <div className="text-[11px] text-gray-500 mb-2">{ev.description}</div>
+            )}
+            <div className="h-1 rounded-full bg-gray-800 overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${Math.max(pct, 8)}%`,
+                  background: `linear-gradient(90deg, #f97316, #ef4444)`,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </button>
+      {expandable && open && (
+        <div className="px-4 pb-4 pl-10">
+          <div className="rounded-lg border border-t-border/40 bg-gray-950/50 overflow-hidden">
+            <div className="px-4 py-2 text-[11px] uppercase tracking-wider text-gray-500 border-b border-t-border/30">
+              Hotspot Detail
+            </div>
+            <pre className="overflow-x-auto px-4 py-3 text-xs leading-6 text-gray-300 font-mono whitespace-pre-wrap">
+              {ev.code_snippet}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -135,8 +199,7 @@ export default function Dependencies() {
   const current = results[tab];
   const maxHotspot =
     current?.evidence?.reduce((max, ev) => {
-      const m = ev.description.match(/\((\d+)\s/);
-      return m ? Math.max(max, parseInt(m[1])) : max;
+      return Math.max(max, parseHotspotCount(ev.description));
     }, 0) ?? 1;
 
   return (

@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from trace_engine.models.code_graph import CodeGraph
 from trace_engine.models.evidence import Confidence, Evidence, QueryResult, ReasoningStep
 from trace_engine.models.graph import EdgeType, NodeType
+from trace_engine.query.snippets import QuerySnippetResolver
 
 
 class DependencyAnalyzer:
     """Dependency insights: cycles, hotspots, coupling."""
 
-    def __init__(self, graph: CodeGraph) -> None:
+    def __init__(
+        self,
+        graph: CodeGraph,
+        repo_root: str | Path | None = None,
+    ) -> None:
         self._graph = graph
+        self._snippets = QuerySnippetResolver(graph, repo_root=repo_root)
 
     # ------------------------------------------------------------------
     # Circular dependencies (file-level)
@@ -29,6 +37,7 @@ class DependencyAnalyzer:
             Evidence(
                 file_path=cycle[0],
                 description=" → ".join(cycle) + f" → {cycle[0]}",
+                code_snippet=self._snippets.for_cycle(cycle),
             )
             for cycle in file_cycles
         ]
@@ -70,6 +79,8 @@ class DependencyAnalyzer:
                         file_path=node.file_path,
                         function_name=node.name,
                         line_start=node.line_start,
+                        line_end=node.line_end,
+                        code_snippet=self._snippets.for_node(node),
                         description=f"fan-in={fi}  fan-out={fo}",
                     )
                 )
@@ -116,6 +127,7 @@ class DependencyAnalyzer:
             Evidence(
                 file_path=a,
                 description=f"{a} ↔ {b}  ({count} import edge(s))",
+                code_snippet=self._snippets.for_coupled_files(a, b),
             )
             for a, b, count in coupled
         ]

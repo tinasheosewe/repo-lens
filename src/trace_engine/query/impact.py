@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from trace_engine.models.code_graph import CodeGraph
 from trace_engine.models.evidence import Confidence, Evidence, QueryResult, ReasoningStep
 from trace_engine.models.graph import EdgeType, NodeType
+from trace_engine.query.snippets import QuerySnippetResolver
 
 
 class ImpactAnalyzer:
@@ -10,8 +13,13 @@ class ImpactAnalyzer:
 
     _USAGE_EDGES = {EdgeType.CALLS, EdgeType.IMPORTS}
 
-    def __init__(self, graph: CodeGraph) -> None:
+    def __init__(
+        self,
+        graph: CodeGraph,
+        repo_root: str | Path | None = None,
+    ) -> None:
         self._graph = graph
+        self._snippets = QuerySnippetResolver(graph, repo_root=repo_root)
 
     def analyze(self, node_id: str) -> QueryResult:
         node = self._graph.get_node(node_id)
@@ -69,6 +77,7 @@ class ImpactAnalyzer:
                 function_name=dep.name,
                 line_start=dep.line_start,
                 line_end=dep.line_end,
+                code_snippet=self._snippets.for_node(dep),
                 description=f"[{severity}] {dep.name} ({dep.node_type.value})",
             )
             evidence.append(ev)

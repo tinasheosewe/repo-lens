@@ -5,6 +5,7 @@ from pathlib import Path
 from trace_engine.models.code_graph import CodeGraph
 from trace_engine.models.evidence import Confidence, Evidence, QueryResult, ReasoningStep
 from trace_engine.models.graph import EdgeType, NodeType
+from trace_engine.query.snippets import QuerySnippetResolver
 
 
 class DeadCodeDetector:
@@ -25,6 +26,7 @@ class DeadCodeDetector:
     ) -> None:
         self._graph = graph
         self._repo_root = Path(repo_root).resolve() if repo_root else None
+        self._snippets = QuerySnippetResolver(graph, repo_root=repo_root)
 
     def detect(self, *, include_private: bool = False) -> QueryResult:
         callables = (
@@ -59,11 +61,7 @@ class DeadCodeDetector:
                     function_name=func.name,
                     line_start=func.line_start,
                     line_end=func.line_end,
-                    code_snippet=self._read_code_snippet(
-                        func.file_path,
-                        func.line_start,
-                        func.line_end,
-                    ),
+                    code_snippet=self._snippets.for_node(func),
                     description="No incoming CALLS edges",
                 )
                 if is_test:
@@ -101,39 +99,3 @@ class DeadCodeDetector:
             for d in decorators
         )
 
-    def _read_code_snippet(
-        self,
-        file_path: str,
-        line_start: int,
-        line_end: int,
-    ) -> str | None:
-        candidates: list[Path] = []
-
-        raw_path = Path(file_path)
-        if raw_path.is_absolute():
-            candidates.append(raw_path)
-        if self._repo_root is not None:
-            candidates.append(self._repo_root / file_path)
-        candidates.append(Path.cwd() / file_path)
-
-        seen: set[Path] = set()
-        for candidate in candidates:
-            resolved = candidate.resolve()
-            if resolved in seen:
-                continue
-            seen.add(resolved)
-            if not resolved.is_file():
-                continue
-
-            try:
-                lines = resolved.read_text(encoding="utf-8").splitlines()
-            except OSError:
-                return None
-
-            start_index = max(line_start - 1, 0)
-            end_index = min(line_end, len(lines))
-            if start_index >= end_index:
-                return None
-            return "\n".join(lines[start_index:end_index])
-
-        return None

@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from trace_engine.models.code_graph import CodeGraph
 from trace_engine.models.evidence import Confidence, Evidence, QueryResult, ReasoningStep
 from trace_engine.models.graph import EdgeType, NodeType
+from trace_engine.query.snippets import QuerySnippetResolver
 
 
 class QueryEngine:
     """Deterministic graph-backed queries — no LLM required."""
 
-    def __init__(self, graph: CodeGraph) -> None:
+    def __init__(
+        self,
+        graph: CodeGraph,
+        repo_root: str | Path | None = None,
+    ) -> None:
         self._graph = graph
+        self._snippets = QuerySnippetResolver(graph, repo_root=repo_root)
 
     # ------------------------------------------------------------------
     # What depends on X?
@@ -33,6 +41,7 @@ class QueryEngine:
                 function_name=d.name,
                 line_start=d.line_start,
                 line_end=d.line_end,
+                code_snippet=self._snippets.for_node(d),
                 description=f"{d.name} depends on {target.name}",
             )
             for d in dependents
@@ -82,6 +91,8 @@ class QueryEngine:
                             file_path=c.file_path,
                             function_name=c.name,
                             line_start=e.metadata.get("line"),
+                            line_end=c.line_end,
+                            code_snippet=self._snippets.for_node(c),
                             description=f"Called from {c.name} in {c.file_path}",
                         )
                     )
@@ -92,6 +103,8 @@ class QueryEngine:
                         file_path=c.file_path,
                         function_name=c.name,
                         line_start=c.line_start,
+                        line_end=c.line_end,
+                        code_snippet=self._snippets.for_node(c),
                         description=f"Called from {c.name}",
                     )
                 )
@@ -127,6 +140,8 @@ class QueryEngine:
                             file_path=node.file_path,
                             function_name=node.name,
                             line_start=node.line_start,
+                            line_end=node.line_end,
+                            code_snippet=self._snippets.for_node(node),
                             description=f"Endpoint: @{d}",
                         )
                     )
