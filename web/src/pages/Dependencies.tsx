@@ -92,6 +92,16 @@ function parseHotspotCount(description: string): number {
   return values.reduce((max, value) => Math.max(max, value), 0);
 }
 
+function parseHotspotMetrics(description: string): { fanIn: number; fanOut: number } {
+  const fanInMatch = description.match(/fan-in=(\d+)/);
+  const fanOutMatch = description.match(/fan-out=(\d+)/);
+
+  return {
+    fanIn: fanInMatch ? parseInt(fanInMatch[1], 10) : 0,
+    fanOut: fanOutMatch ? parseInt(fanOutMatch[1], 10) : 0,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Hotspot bar                                                         */
 /* ------------------------------------------------------------------ */
@@ -104,6 +114,7 @@ function HotspotRow({
 }) {
   const [open, setOpen] = useState(false);
   const count = parseHotspotCount(ev.description);
+  const metrics = parseHotspotMetrics(ev.description);
   const pct = maxCount > 0 ? (count / maxCount) * 100 : 20;
   const expandable = !!ev.code_snippet;
 
@@ -131,9 +142,15 @@ function HotspotRow({
                 {ev.line_start ? `:${ev.line_start}` : ""}
               </span>
             </div>
-            {ev.function_name && (
-              <div className="text-[11px] text-gray-500 mb-2">{ev.description}</div>
-            )}
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+              <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-amber-300">
+                fan-in {metrics.fanIn}
+              </span>
+              <span className="rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-rose-300">
+                fan-out {metrics.fanOut}
+              </span>
+              <span>Higher values mean this symbol is more central to change risk.</span>
+            </div>
             <div className="h-1 rounded-full bg-gray-800 overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-700"
@@ -249,6 +266,27 @@ export default function Dependencies() {
               {current.conclusion}
             </p>
           </div>
+
+          {tab === "hotspots" && (
+            <div className="glass rounded-xl p-5 border border-amber-500/15 bg-gradient-to-br from-amber-500/6 to-transparent">
+              <div className="flex items-center gap-2 text-amber-300 mb-2">
+                <Flame size={15} />
+                <h2 className="text-sm font-semibold">What Hotspots Mean</h2>
+              </div>
+              <p className="text-sm text-gray-300 leading-relaxed">
+                Hotspots are functions or methods with unusually high dependency traffic.
+                <span className="text-gray-400"> Fan-in </span>
+                counts how many other parts of the code depend on this symbol.
+                <span className="text-gray-400"> Fan-out </span>
+                counts how many other symbols it depends on.
+              </p>
+              <p className="text-xs text-gray-500 mt-3 leading-relaxed">
+                In practice, higher fan-in usually means wider blast radius when a symbol changes,
+                and higher fan-out usually means more implementation complexity. The bar below is
+                scaled against the strongest hotspot in the current result set.
+              </p>
+            </div>
+          )}
 
           {/* Tab-specific rendering */}
           {tab === "cycles" && (
