@@ -128,7 +128,7 @@ export default function About({ status, onRepoLoaded }: Props) {
               <ShieldAlert size={15} />
               <span className="font-medium">Current boundary</span>
             </div>
-            Trace now accepts Git repository URLs and clones them into a managed cache before analysis. It still only parses Python source today. If a remote repo has no supported Python files, the UI rejects it instead of pretending it loaded successfully.
+            Trace now accepts Git repository URLs and clones them into a managed cache before analysis. It parses Python, JavaScript, TypeScript, HTML, and CSS, and rejects repositories that do not contain supported source files instead of pretending they loaded successfully.
           </div>
         </section>
 

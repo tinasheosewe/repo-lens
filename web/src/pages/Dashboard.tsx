@@ -4,12 +4,84 @@ import {
   GitBranch,
   FileCode2,
   FunctionSquare,
-  Activity,
   Layers,
+  Globe2,
+  Link2,
+  Palette,
 } from "lucide-react";
 import { api } from "../api/client";
-import type { GraphStats } from "../types";
+import type { GraphEdge, GraphNode, GraphStats } from "../types";
 import GraphView from "../components/GraphView";
+
+function inferLanguage(filePath: string): string {
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "py":
+      return "Python";
+    case "js":
+    case "jsx":
+    case "mjs":
+    case "cjs":
+      return "JavaScript";
+    case "ts":
+    case "tsx":
+      return "TypeScript";
+    case "html":
+    case "htm":
+      return "HTML";
+    case "css":
+      return "CSS";
+    default:
+      return "Other";
+  }
+}
+
+function summarizeLanguageCounts(nodes: GraphNode[]) {
+  const counts = new Map<string, number>();
+  for (const node of nodes) {
+    if (node.node_type !== "file") {
+      continue;
+    }
+    const language = inferLanguage(node.file_path);
+    counts.set(language, (counts.get(language) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+}
+
+function summarizeMetadata(nodes: GraphNode[], edges: GraphEdge[]) {
+  let linkedAssets = 0;
+  let htmlIds = 0;
+  let htmlClasses = 0;
+  let cssClasses = 0;
+  let cssIds = 0;
+
+  for (const node of nodes) {
+    if (node.node_type !== "file") {
+      continue;
+    }
+    const metadata = node.metadata as {
+      linked_assets?: string[];
+      html_ids?: string[];
+      html_classes?: string[];
+      css_classes?: string[];
+      css_ids?: string[];
+    };
+    linkedAssets += metadata.linked_assets?.length ?? 0;
+    htmlIds += metadata.html_ids?.length ?? 0;
+    htmlClasses += metadata.html_classes?.length ?? 0;
+    cssClasses += metadata.css_classes?.length ?? 0;
+    cssIds += metadata.css_ids?.length ?? 0;
+  }
+
+  return {
+    linkedAssets,
+    htmlIds,
+    htmlClasses,
+    cssClasses,
+    cssIds,
+    importEdges: edges.filter((edge) => edge.edge_type === "imports").length,
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /* Stat card                                                           */
@@ -122,12 +194,20 @@ function TypeBar({
 /* ------------------------------------------------------------------ */
 export default function Dashboard() {
   const [stats, setStats] = useState<GraphStats | null>(null);
+  const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
+  const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.graphStats().then(setStats).catch((err) => {
-      setError(err instanceof Error ? err.message : "Unable to load dashboard.");
-    });
+    Promise.all([api.graphStats(), api.graphNodes(), api.graphEdges()])
+      .then(([nextStats, nextNodes, nextEdges]) => {
+        setStats(nextStats);
+        setGraphNodes(nextNodes);
+        setGraphEdges(nextEdges);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Unable to load dashboard.");
+      });
   }, []);
 
   if (error) {
@@ -145,6 +225,9 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const languageCounts = summarizeLanguageCounts(graphNodes);
+  const metadataSummary = summarizeMetadata(graphNodes, graphEdges);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -193,6 +276,64 @@ export default function Dashboard() {
         <TypeBar data={stats.edges_by_type} />
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="glass rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Globe2 size={14} className="text-t-primary" />
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Detected Languages
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {languageCounts.map(([language, count]) => (
+              <span key={language} className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-200">
+                {language} ({count})
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="glass rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Link2 size={14} className="text-t-primary" />
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Asset Relationships
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard label="Linked Assets" value={metadataSummary.linkedAssets} icon={Link2} accent="#f59e0b" />
+            <StatCard label="Import Edges" value={metadataSummary.importEdges} icon={GitBranch} accent="#818cf8" />
+          </div>
+        </div>
+
+        <div className="glass rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Palette size={14} className="text-t-primary" />
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Markup & Style Metadata
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-xl border border-t-border/40 bg-gray-950/35 p-3">
+              <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-1">HTML IDs</div>
+              <div className="text-xl font-semibold text-white">{metadataSummary.htmlIds}</div>
+            </div>
+            <div className="rounded-xl border border-t-border/40 bg-gray-950/35 p-3">
+              <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-1">HTML Classes</div>
+              <div className="text-xl font-semibold text-white">{metadataSummary.htmlClasses}</div>
+            </div>
+            <div className="rounded-xl border border-t-border/40 bg-gray-950/35 p-3">
+              <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-1">CSS Classes</div>
+              <div className="text-xl font-semibold text-white">{metadataSummary.cssClasses}</div>
+            </div>
+            <div className="rounded-xl border border-t-border/40 bg-gray-950/35 p-3">
+              <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-1">CSS IDs</div>
+              <div className="text-xl font-semibold text-white">{metadataSummary.cssIds}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Graph */}
       <div className="glass rounded-xl overflow-hidden">
         <div className="flex items-center gap-2 px-5 py-3 border-b border-t-border/50">
@@ -201,7 +342,9 @@ export default function Dashboard() {
             Code Graph
           </span>
         </div>
-        <GraphView className="h-[500px]" />
+        <div className="p-5">
+          <GraphView rawNodes={graphNodes} rawEdges={graphEdges} className="h-[560px]" />
+        </div>
       </div>
     </div>
   );

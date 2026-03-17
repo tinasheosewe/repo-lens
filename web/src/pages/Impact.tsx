@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Zap } from "lucide-react";
 import { api } from "../api/client";
-import type { Evidence, QueryResult } from "../types";
+import type { Evidence, GraphEdge, GraphNode, QueryResult } from "../types";
 import ResultPanel from "../components/ResultPanel";
 import GraphView from "../components/GraphView";
 import SymbolPicker, { getEvidenceLabel } from "../components/SymbolPicker";
@@ -12,6 +12,20 @@ export default function Impact() {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
+  const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
+  const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
+
+  useEffect(() => {
+    Promise.all([api.graphNodes(), api.graphEdges()])
+      .then(([nextNodes, nextEdges]) => {
+        setGraphNodes(nextNodes);
+        setGraphEdges(nextEdges);
+      })
+      .catch(() => {
+        setGraphNodes([]);
+        setGraphEdges([]);
+      });
+  }, []);
 
   const matchesSelectedValue = (selected: Evidence | null, value: string) => {
     return !!selected && getEvidenceLabel(selected) === value;
@@ -97,6 +111,8 @@ export default function Impact() {
               </span>
             </div>
             <GraphView
+              rawNodes={graphNodes}
+              rawEdges={graphEdges}
               className="h-[400px]"
               highlightIds={highlightIds}
             />
