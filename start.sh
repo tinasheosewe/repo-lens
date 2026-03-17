@@ -6,6 +6,20 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WEB_DIR="$ROOT_DIR/web"
 VENV_PYTHON="$ROOT_DIR/.venv/bin/python"
 
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.env"
+  set +a
+fi
+
+if [[ -f "$ROOT_DIR/.env.local" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.env.local"
+  set +a
+fi
+
 BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
@@ -53,6 +67,8 @@ echo "Starting backend on http://$BACKEND_HOST:$BACKEND_PORT for source: $REPO_S
 TRACE_REPO_PATH="$REPO_SOURCE" \
 TRACE_BACKEND_HOST="$BACKEND_HOST" \
 TRACE_BACKEND_PORT="$BACKEND_PORT" \
+TRACE_LLM_API_KEY="${TRACE_LLM_API_KEY:-${OPENAI_API_KEY:-}}" \
+OPENAI_API_KEY="${OPENAI_API_KEY:-${TRACE_LLM_API_KEY:-}}" \
 "$VENV_PYTHON" - <<'PY' &
 import os
 

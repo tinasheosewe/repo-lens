@@ -6,6 +6,7 @@ from pathlib import Path
 from trace_engine.core import Trace
 from trace_engine.models.code_graph import CodeGraph
 from trace_engine.query.advanced import AdvancedAnalyzer
+from trace_engine.query.llm import TraceLLMClient
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "sample_project"
@@ -63,11 +64,76 @@ class TestAdvancedAnalyzer:
         assert result.evidence
 
     def test_ask_architecture_reports_missing_llm_config(self, sample_graph: CodeGraph, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("TRACE_LLM_API_KEY", raising=False)
         analyzer = AdvancedAnalyzer(sample_graph, repo_root=FIXTURES_DIR)
         result = analyzer.ask_architecture("Where is auth implemented?")
 
         assert "not configured" in result.conclusion.lower()
+        assert result.metadata.get("ui_blocks")
+
+    def test_ask_architecture_builds_structured_ui_from_llm(self, sample_graph: CodeGraph, monkeypatch):
+        class FakeClient:
+            def complete_structured_with_tools(self, **kwargs):
+                tool_handler = kwargs["tool_handler"]
+                tool_handler("get_repo_overview", {})
+                tool_handler("find_concept_matches", {"concept": "auth", "limit": 3})
+                return {
+                    "summary": "Authentication is centered in the API and service layers.",
+                    "confidence": "high",
+                    "reasoning_steps": [
+                        "Checked the repo overview for major subsystems.",
+                        "Looked up concept matches for auth-related symbols.",
+                    ],
+                    "ui_blocks": [
+                        {
+                            "type": "narrative",
+                            "title": "Answer",
+                            "body": "Authentication is centered in the API and service layers.",
+                            "tone": "info",
+                            "items": [],
+                        },
+                        {
+                            "type": "files",
+                            "title": "Relevant Files",
+                            "body": "Primary implementation points.",
+                            "tone": "info",
+                            "items": [
+                                {
+                                    "label": "AuthService",
+                                    "value": "services/auth.py",
+                                    "description": "Core authentication service logic.",
+                                }
+                            ],
+                        },
+                    ],
+                    "citations": [
+                        {
+                            "file_path": "services/auth.py",
+                            "label": "AuthService",
+                            "summary": "Core authentication service logic.",
+                        }
+                    ],
+                }
+
+        monkeypatch.setattr(TraceLLMClient, "from_environment", classmethod(lambda cls: FakeClient()))
+        analyzer = AdvancedAnalyzer(sample_graph, repo_root=FIXTURES_DIR)
+
+        result = analyzer.ask_architecture("Where is auth implemented?")
+
+        assert result.conclusion == "Authentication is centered in the API and service layers."
+        assert result.metadata.get("ui_blocks")
+        assert result.metadata.get("tool_trace")
+        assert any(evidence.file_path == "services/auth.py" for evidence in result.evidence)
+
+
+def test_trace_llm_client_reads_openai_api_key(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.delenv("TRACE_LLM_API_KEY", raising=False)
+
+    client = TraceLLMClient.from_environment()
+
+    assert client._api_key == "test-key"
 
 
 def test_history_drift_on_git_repo(tmp_path: Path):

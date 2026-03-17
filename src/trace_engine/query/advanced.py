@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import re
 import subprocess
+from collections.abc import Callable
 from collections import Counter, defaultdict
 from itertools import combinations
 from pathlib import Path
@@ -42,6 +43,65 @@ class AdvancedAnalyzer:
         "repository": ("repository", "repo", "store", "dao"),
         "config": ("config", "settings", "conf"),
         "test": ("test", "pytest", "fixture"),
+    }
+    _ASK_UI_SCHEMA: dict[str, object] = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "summary": {"type": "string"},
+            "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+            "reasoning_steps": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "ui_blocks": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["narrative", "bullets", "metrics", "files", "callout"],
+                        },
+                        "title": {"type": "string"},
+                        "body": {"type": "string"},
+                        "tone": {
+                            "type": "string",
+                            "enum": ["info", "success", "warn"],
+                        },
+                        "items": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "properties": {
+                                    "label": {"type": "string"},
+                                    "value": {"type": "string"},
+                                    "description": {"type": "string"},
+                                },
+                                "required": ["label", "value", "description"],
+                            },
+                        },
+                    },
+                    "required": ["type", "title", "body", "tone", "items"],
+                },
+            },
+            "citations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "file_path": {"type": "string"},
+                        "label": {"type": "string"},
+                        "summary": {"type": "string"},
+                    },
+                    "required": ["file_path", "label", "summary"],
+                },
+            },
+        },
+        "required": ["summary", "confidence", "reasoning_steps", "ui_blocks", "citations"],
     }
 
     def __init__(
@@ -568,37 +628,543 @@ class AdvancedAnalyzer:
         concept = self.concept_search(query)
         onboarding = self.onboarding_summary()
         critical = self.rank_criticality(limit=5)
-        context_blocks = [
-            f"Onboarding summary: {onboarding.conclusion}",
-            "Top critical symbols:\n" + "\n".join(f"- {ev.file_path}: {ev.description}" for ev in critical.evidence[:5]),
-            "Concept matches:\n" + "\n".join(f"- {ev.file_path}: {ev.description}" for ev in concept.evidence[:8]),
-        ]
+        fallback = self._ask_architecture_fallback(
+            query,
+            concept=concept,
+            onboarding=onboarding,
+            critical=critical,
+            warning=None,
+        )
 
         try:
             client = TraceLLMClient.from_environment()
         except LLMConfigurationError as exc:
-            return QueryResult(
-                conclusion=(
+            return self._ask_architecture_fallback(
+                query,
+                concept=concept,
+                onboarding=onboarding,
+                critical=critical,
+                warning=(
                     f"LLM repo Q&A is available but not configured: {exc}. "
-                    "Set TRACE_LLM_API_KEY and optionally TRACE_LLM_MODEL / TRACE_LLM_BASE_URL to enable it."
+                    "Set OPENAI_API_KEY and optionally TRACE_LLM_MODEL / TRACE_LLM_BASE_URL to enable it."
                 ),
-                evidence=concept.evidence[:5] + critical.evidence[:3],
-                confidence=Confidence.MEDIUM,
             )
 
-        answer = client.complete(
-            system_prompt=(
-                "You answer repository architecture questions using provided repo context. "
-                "Be concise, factual, and explicit about uncertainty."
-            ),
-            user_prompt=f"Question: {query}\n\nContext:\n{chr(10).join(context_blocks)}",
+        tool_outputs: dict[str, QueryResult] = {
+            "concept_search": concept,
+            "repo_overview": onboarding,
+            "critical_symbols": critical,
+        }
+        tool_trace: list[dict[str, object]] = []
+        tools = self._ask_architecture_tool_definitions()
+
+        def tool_handler(name: str, args: dict[str, object]) -> dict[str, object]:
+            tool_trace.append({"tool": name, "args": args})
+            payload, result = self._run_ask_architecture_tool(name, args)
+            if result is not None:
+                tool_outputs[name] = result
+            return payload
+
+        try:
+            structured = client.complete_structured_with_tools(
+                system_prompt=(
+                    "You answer repository architecture questions using repository tools. "
+                    "Do not guess. Call the relevant tools before you answer. "
+                    "Return only structured JSON matching the schema. "
+                    "Use rich UI blocks that fit a software architecture dashboard: concise narrative cards, bullet summaries, metric cards, file lists, and callouts."
+                ),
+                user_prompt=(
+                    f"Question: {query}\n\n"
+                    "Available tools expose repository structure, criticality, concept matches, entry flows, drift, file inspection, and symbol search. "
+                    "Use the tools to gather grounded facts, then produce a concise but information-dense answer."
+                ),
+                response_schema=self._ASK_UI_SCHEMA,
+                tools=tools,
+                tool_handler=tool_handler,
+            )
+        except RuntimeError as exc:
+            return self._ask_architecture_fallback(
+                query,
+                concept=concept,
+                onboarding=onboarding,
+                critical=critical,
+                warning=f"LLM answer generation failed: {exc}",
+            )
+
+        return self._build_ask_architecture_result(
+            query,
+            structured,
+            fallback=fallback,
+            tool_outputs=tool_outputs,
+            tool_trace=tool_trace,
         )
+
+    def _ask_architecture_tool_definitions(self) -> list[dict[str, object]]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_repo_overview",
+                    "description": "Fetch the onboarding summary, subsystem breakdown, and entry-flow overview for the repository.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_critical_symbols",
+                    "description": "Fetch the graph-critical symbols with fan-in, fan-out, and dependency spread.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {"type": "integer", "minimum": 1, "maximum": 10},
+                        },
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "find_concept_matches",
+                    "description": "Find files and symbols related to a domain concept or natural-language term.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "concept": {"type": "string"},
+                            "limit": {"type": "integer", "minimum": 1, "maximum": 10},
+                        },
+                        "required": ["concept"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "trace_entry_points",
+                    "description": "Trace representative entry-point flows such as routes, jobs, and CLI commands.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {"type": "string", "enum": ["all", "route", "job", "cli"]},
+                            "max_depth": {"type": "integer", "minimum": 1, "maximum": 8},
+                        },
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_history_drift",
+                    "description": "Fetch churn-heavy files and top co-change pairs from Git history.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {"type": "integer", "minimum": 1, "maximum": 10},
+                        },
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "inspect_file",
+                    "description": "Inspect a specific file for symbols, import fan-in/fan-out, and a source snippet.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {"type": "string"},
+                        },
+                        "required": ["file_path"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_symbols",
+                    "description": "Search symbols and file paths by substring to locate likely implementation points.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "limit": {"type": "integer", "minimum": 1, "maximum": 12},
+                        },
+                        "required": ["query"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+        ]
+
+    def _run_ask_architecture_tool(
+        self,
+        name: str,
+        args: dict[str, object],
+    ) -> tuple[dict[str, object], QueryResult | None]:
+        if name == "get_repo_overview":
+            result = self.onboarding_summary()
+            subsystems = result.metadata.get("subsystems") if isinstance(result.metadata, dict) else []
+            return {
+                "summary": result.conclusion,
+                "subsystems": [
+                    {"name": str(item[0]), "count": int(item[1])}
+                    for item in (subsystems if isinstance(subsystems, list) else [])[:8]
+                    if isinstance(item, (list, tuple)) and len(item) == 2
+                ],
+                "hotspot_count": int(result.metadata.get("hotspot_count", 0)) if isinstance(result.metadata, dict) else 0,
+            }, result
+
+        if name == "get_critical_symbols":
+            limit = self._clamp_int(args.get("limit"), default=5, minimum=1, maximum=10)
+            result = self.rank_criticality(limit=limit)
+            rankings = result.metadata.get("rankings") if isinstance(result.metadata, dict) else []
+            return {
+                "summary": result.conclusion,
+                "symbols": list(rankings)[:limit] if isinstance(rankings, list) else [],
+            }, result
+
+        if name == "find_concept_matches":
+            concept = self._safe_string(args.get("concept"))
+            limit = self._clamp_int(args.get("limit"), default=6, minimum=1, maximum=10)
+            result = self.concept_search(concept)
+            return {
+                "summary": result.conclusion,
+                "matches": [
+                    {
+                        "file_path": evidence.file_path,
+                        "symbol": evidence.function_name or Path(evidence.file_path).name,
+                        "description": evidence.description,
+                    }
+                    for evidence in result.evidence[:limit]
+                ],
+            }, result
+
+        if name == "trace_entry_points":
+            kind = self._safe_string(args.get("kind")) or "all"
+            if kind not in {"all", "route", "job", "cli"}:
+                kind = "all"
+            max_depth = self._clamp_int(args.get("max_depth"), default=5, minimum=1, maximum=8)
+            result = self.trace_entry_flows(kind=kind, max_depth=max_depth)
+            raw_paths = result.metadata.get("path_details") if isinstance(result.metadata, dict) else []
+            path_summaries = []
+            if isinstance(raw_paths, list):
+                for path in raw_paths[:6]:
+                    if not isinstance(path, list):
+                        continue
+                    names = [str(step.get("name", "")) for step in path if isinstance(step, dict) and step.get("name")]
+                    if names:
+                        path_summaries.append(" -> ".join(names))
+            return {
+                "summary": result.conclusion,
+                "paths": path_summaries,
+            }, result
+
+        if name == "get_history_drift":
+            limit = self._clamp_int(args.get("limit"), default=6, minimum=1, maximum=10)
+            result = self.history_drift(limit=limit)
+            metadata = result.metadata if isinstance(result.metadata, dict) else {}
+            return {
+                "summary": result.conclusion,
+                "churn_files": list(metadata.get("churn_files", []))[:limit] if isinstance(metadata.get("churn_files"), list) else [],
+                "cochange_pairs": list(metadata.get("cochange_pairs", []))[:limit] if isinstance(metadata.get("cochange_pairs"), list) else [],
+            }, result
+
+        if name == "inspect_file":
+            file_path = self._safe_string(args.get("file_path"))
+            file_summary = self._inspect_file_summary(file_path)
+            return file_summary, None
+
+        if name == "search_symbols":
+            query = self._safe_string(args.get("query"))
+            limit = self._clamp_int(args.get("limit"), default=8, minimum=1, maximum=12)
+            return {
+                "matches": self._search_symbol_matches(query, limit=limit),
+            }, None
+
+        return {"error": f"Unknown tool '{name}'"}, None
+
+    def _ask_architecture_fallback(
+        self,
+        query: str,
+        *,
+        concept: QueryResult,
+        onboarding: QueryResult,
+        critical: QueryResult,
+        warning: str | None,
+    ) -> QueryResult:
+        warning_body = warning or "LLM-backed repo Q&A is unavailable, so this answer uses deterministic repository signals only."
+        subsystems = onboarding.metadata.get("subsystems") if isinstance(onboarding.metadata, dict) else []
+        rankings = critical.metadata.get("rankings") if isinstance(critical.metadata, dict) else []
+        ui_blocks = [
+            {
+                "type": "callout",
+                "title": "Ask Repo Status",
+                "body": warning_body,
+                "tone": "warn" if warning else "info",
+                "items": [],
+            },
+            {
+                "type": "narrative",
+                "title": "Repository Readout",
+                "body": onboarding.conclusion,
+                "tone": "info",
+                "items": [],
+            },
+            {
+                "type": "metrics",
+                "title": "Critical Symbols",
+                "body": "Graph-central symbols most likely to affect broad parts of the repository.",
+                "tone": "info",
+                "items": [
+                    {
+                        "label": str(item.get("name", "symbol")),
+                        "value": f"fan-in {item.get('fan_in', 0)} | fan-out {item.get('fan_out', 0)}",
+                        "description": str(item.get("file_path", "")),
+                    }
+                    for item in (rankings if isinstance(rankings, list) else [])[:4]
+                    if isinstance(item, dict)
+                ],
+            },
+            {
+                "type": "files",
+                "title": "Relevant Matches",
+                "body": f"Top deterministic matches for '{query}'.",
+                "tone": "info",
+                "items": [
+                    {
+                        "label": evidence.function_name or Path(evidence.file_path).name,
+                        "value": evidence.file_path,
+                        "description": evidence.description,
+                    }
+                    for evidence in concept.evidence[:5]
+                ],
+            },
+        ]
+        if isinstance(subsystems, list) and subsystems:
+            ui_blocks.insert(
+                2,
+                {
+                    "type": "bullets",
+                    "title": "Subsystems",
+                    "body": "Top-level areas surfaced by onboarding analysis.",
+                    "tone": "info",
+                    "items": [
+                        {
+                            "label": str(item[0]),
+                            "value": str(item[1]),
+                            "description": "source files",
+                        }
+                        for item in subsystems[:6]
+                        if isinstance(item, (list, tuple)) and len(item) == 2
+                    ],
+                },
+            )
+
         return QueryResult(
-            conclusion=answer,
+            conclusion=warning_body if warning else onboarding.conclusion,
             evidence=concept.evidence[:5] + critical.evidence[:3],
+            reasoning_chain=[
+                ReasoningStep(step=1, description="Used onboarding summary for repository shape and likely starting points."),
+                ReasoningStep(step=2, description="Used concept matches to ground the answer in relevant files and symbols."),
+                ReasoningStep(step=3, description="Used criticality ranking to highlight high-impact symbols."),
+            ],
             confidence=Confidence.MEDIUM,
-            metadata={"question": query},
+            metadata={
+                "question": query,
+                "ui_blocks": ui_blocks,
+                "tool_trace": [
+                    {"tool": "get_repo_overview", "args": {}},
+                    {"tool": "find_concept_matches", "args": {"concept": query}},
+                    {"tool": "get_critical_symbols", "args": {"limit": 5}},
+                ],
+            },
         )
+
+    def _build_ask_architecture_result(
+        self,
+        query: str,
+        structured: dict[str, object],
+        *,
+        fallback: QueryResult,
+        tool_outputs: dict[str, QueryResult],
+        tool_trace: list[dict[str, object]],
+    ) -> QueryResult:
+        summary = self._safe_string(structured.get("summary")) or fallback.conclusion
+        confidence_raw = self._safe_string(structured.get("confidence")).lower()
+        confidence = {
+            "high": Confidence.HIGH,
+            "medium": Confidence.MEDIUM,
+            "low": Confidence.LOW,
+        }.get(confidence_raw, fallback.confidence)
+        reasoning_steps_raw = structured.get("reasoning_steps")
+        reasoning_steps = reasoning_steps_raw if isinstance(reasoning_steps_raw, list) else []
+        reasoning_chain = [
+            ReasoningStep(step=index, description=str(step))
+            for index, step in enumerate(reasoning_steps[:6], start=1)
+            if isinstance(step, str) and step.strip()
+        ] or fallback.reasoning_chain
+        ui_blocks = self._sanitize_ui_blocks(structured.get("ui_blocks")) or fallback.metadata.get("ui_blocks", [])
+        citations = structured.get("citations") if isinstance(structured.get("citations"), list) else []
+        evidence = self._build_ask_architecture_evidence(citations, tool_outputs)
+        if not evidence:
+            evidence = fallback.evidence
+
+        return QueryResult(
+            conclusion=summary,
+            evidence=evidence,
+            reasoning_chain=reasoning_chain,
+            confidence=confidence,
+            metadata={
+                "question": query,
+                "ui_blocks": ui_blocks,
+                "tool_trace": tool_trace,
+            },
+        )
+
+    def _build_ask_architecture_evidence(
+        self,
+        citations: list[object],
+        tool_outputs: dict[str, QueryResult],
+    ) -> list[Evidence]:
+        evidence_by_file: dict[str, Evidence] = {}
+        for result in tool_outputs.values():
+            for evidence in result.evidence:
+                evidence_by_file.setdefault(evidence.file_path, evidence)
+
+        built: list[Evidence] = []
+        for citation in citations[:8]:
+            if not isinstance(citation, dict):
+                continue
+            file_path = self._safe_string(citation.get("file_path"))
+            summary = self._safe_string(citation.get("summary"))
+            label = self._safe_string(citation.get("label"))
+            if not file_path or not summary:
+                continue
+            existing = evidence_by_file.get(file_path)
+            if existing is not None:
+                built.append(
+                    existing.model_copy(
+                        update={
+                            "description": f"{label}: {summary}" if label else summary,
+                        }
+                    )
+                )
+            else:
+                built.append(
+                    Evidence(
+                        file_path=file_path,
+                        description=f"{label}: {summary}" if label else summary,
+                        code_snippet=self._snippets.for_location(file_path, 1, 20),
+                    )
+                )
+        return built
+
+    def _sanitize_ui_blocks(self, raw: object) -> list[dict[str, object]]:
+        if not isinstance(raw, list):
+            return []
+        sanitized: list[dict[str, object]] = []
+        for block in raw[:8]:
+            if not isinstance(block, dict):
+                continue
+            block_type = self._safe_string(block.get("type"))
+            title = self._safe_string(block.get("title"))
+            body = self._safe_string(block.get("body"))
+            tone = self._safe_string(block.get("tone")) or "info"
+            items_raw = block.get("items")
+            items = []
+            if isinstance(items_raw, list):
+                for item in items_raw[:8]:
+                    if not isinstance(item, dict):
+                        continue
+                    items.append(
+                        {
+                            "label": self._safe_string(item.get("label")),
+                            "value": self._safe_string(item.get("value")),
+                            "description": self._safe_string(item.get("description")),
+                        }
+                    )
+            if block_type not in {"narrative", "bullets", "metrics", "files", "callout"}:
+                continue
+            sanitized.append(
+                {
+                    "type": block_type,
+                    "title": title,
+                    "body": body,
+                    "tone": tone if tone in {"info", "success", "warn"} else "info",
+                    "items": items,
+                }
+            )
+        return sanitized
+
+    def _inspect_file_summary(self, file_path: str) -> dict[str, object]:
+        if not file_path:
+            return {"error": "file_path is required"}
+        nodes = self._graph.get_nodes_by_file(file_path)
+        file_node = self._graph.get_node(file_path)
+        member_nodes = [node for node in nodes if node.node_type != NodeType.FILE]
+        return {
+            "file_path": file_path,
+            "symbol_count": len(member_nodes),
+            "imports_in": len(self._graph.get_edges_to(file_path, {EdgeType.IMPORTS})) if file_node else 0,
+            "imports_out": len(self._graph.get_edges_from(file_path, {EdgeType.IMPORTS})) if file_node else 0,
+            "symbols": [
+                {
+                    "name": node.name,
+                    "node_type": node.node_type.value,
+                    "line_start": node.line_start,
+                }
+                for node in member_nodes[:12]
+            ],
+            "snippet": self._snippets.for_location(file_path, 1, 24),
+        }
+
+    def _search_symbol_matches(self, query: str, *, limit: int) -> list[dict[str, object]]:
+        normalized = query.strip().lower()
+        if not normalized:
+            return []
+        matches: list[dict[str, object]] = []
+        seen: set[str] = set()
+        for node in self._graph.nodes.values():
+            haystack = f"{node.name} {node.file_path}".lower()
+            if normalized not in haystack:
+                continue
+            if node.id in seen:
+                continue
+            seen.add(node.id)
+            matches.append(
+                {
+                    "name": node.name,
+                    "file_path": node.file_path,
+                    "node_type": node.node_type.value,
+                    "line_start": node.line_start,
+                }
+            )
+            if len(matches) >= limit:
+                break
+        return matches
+
+    @staticmethod
+    def _safe_string(value: object) -> str:
+        return value.strip() if isinstance(value, str) else ""
+
+    @staticmethod
+    def _clamp_int(value: object, *, default: int, minimum: int, maximum: int) -> int:
+        if isinstance(value, bool):
+            return default
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        return max(minimum, min(maximum, parsed))
 
     def _source_files(self) -> list[GraphNode]:
         return [

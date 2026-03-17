@@ -31,3 +31,5 @@ It also sets `TRACE_REPO_PATH=.` so the app analyzes the repository already pres
 - The service binds to `0.0.0.0:$PORT`, which matches Render's web service requirements.
 - The frontend uses `/api` by default outside local Vite development, so no extra API base URL is required for this single-service deployment.
 - No startup clone is required in Render, so other users do not need your git credentials or deploy-time repository access keys.
+- To enable Ask Repo with OpenAI, set `OPENAI_API_KEY` as a secret environment variable in Render. The blueprint includes the key name but does not store the secret value in the repository.
+- `TRACE_LLM_MODEL` defaults to `gpt-4.1-mini` and can be overridden in Render if you want a different OpenAI-compatible model.
