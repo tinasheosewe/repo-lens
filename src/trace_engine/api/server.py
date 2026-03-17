@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, Query
@@ -86,6 +87,17 @@ def _get_trace() -> Trace:
     return _trace
 
 
+def _startup_repo_source(explicit_repo_path: str | None) -> str | None:
+    if explicit_repo_path:
+        return explicit_repo_path
+
+    env_repo_path = os.environ.get("TRACE_REPO_PATH", "").strip()
+    if env_repo_path:
+        return env_repo_path
+
+    return None
+
+
 def create_app(repo_path: str | None = None) -> FastAPI:
     app = FastAPI(title="Trace", version="0.1.0")
 
@@ -96,8 +108,9 @@ def create_app(repo_path: str | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    if repo_path:
-        _init_trace(repo_path)
+    startup_repo_path = _startup_repo_source(repo_path)
+    if startup_repo_path:
+        _init_trace(startup_repo_path)
 
     # -----------------------------------------------------------------------
     # Routes

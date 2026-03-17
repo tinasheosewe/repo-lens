@@ -16,3 +16,5 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.11
+      - key: TRACE_REPO_PATH
+        value: .

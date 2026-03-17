@@ -57,6 +57,25 @@ def test_repo_support_reports_detected_languages(tmp_path: Path):
     assert data["active_extensions"] == [".py"]
 
 
+def test_create_app_preloads_repo_from_trace_repo_path_env(tmp_path: Path, monkeypatch):
+    source_dir = tmp_path / "repo"
+    source_dir.mkdir()
+    (source_dir / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+
+    monkeypatch.setenv("TRACE_REPO_PATH", str(source_dir))
+    server._trace = None
+    app = server.create_app()
+    client = TestClient(app)
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["loaded"] is True
+    assert data["repo_source"] == str(source_dir)
+    assert data["repo_source_type"] == "local"
+
+
 def test_onboarding_endpoint_returns_summary(tmp_path: Path):
     source_dir = tmp_path / "repo"
     source_dir.mkdir()
