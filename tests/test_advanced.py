@@ -53,12 +53,6 @@ class TestAdvancedAnalyzer:
 
         assert result.metadata.get("path_details")
 
-    def test_pr_review_uses_changed_files(self, sample_graph: CodeGraph):
-        analyzer = AdvancedAnalyzer(sample_graph, repo_root=FIXTURES_DIR)
-        result = analyzer.pr_review(changed_files=["services/auth.py"])
-
-        assert "services/auth.py" in result.metadata.get("changed_files", [])
-
     def test_refactor_plan_returns_candidates(self, sample_graph: CodeGraph):
         analyzer = AdvancedAnalyzer(sample_graph, repo_root=FIXTURES_DIR)
         result = analyzer.refactor_plan()
@@ -97,3 +91,38 @@ def test_history_drift_on_git_repo(tmp_path: Path):
 
     assert result.evidence
     assert any(e.file_path == "app.py" for e in result.evidence)
+
+
+def test_pr_review_uses_git_refs(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "trace@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Trace Test"], cwd=repo, check=True)
+    subprocess.run(["git", "branch", "-M", "main"], cwd=repo, check=True, capture_output=True)
+
+    app_file = repo / "app.py"
+    app_file.write_text("def main():\n    return 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+
+    subprocess.run(["git", "checkout", "-b", "feature/review"], cwd=repo, check=True, capture_output=True)
+    app_file.write_text("def main():\n    return 2\n", encoding="utf-8")
+    subprocess.run(["git", "commit", "-am", "update app"], cwd=repo, check=True, capture_output=True)
+
+    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True, capture_output=True)
+    bare = tmp_path / "remote.git"
+    subprocess.run(["git", "clone", "--bare", str(repo), str(bare)], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "remote", "add", "origin", str(bare)], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "push", "-u", "origin", "main", "feature/review"], cwd=repo, check=True, capture_output=True)
+
+    resolved_repo = tmp_path / "clone"
+    subprocess.run(["git", "clone", "--depth", "1", "--branch", "feature/review", str(bare), str(resolved_repo)], cwd=tmp_path, check=True, capture_output=True)
+
+    trace = Trace(resolved_repo, source=str(bare), ref="feature/review")
+    trace.ingest()
+    result = trace.pr_review(base_ref="main", head_ref="feature/review")
+
+    assert "app.py" in result.metadata.get("changed_files", [])
+    assert result.metadata.get("risk_level") in {"low", "medium", "high"}
+    assert result.metadata.get("risk_reasons")

@@ -55,7 +55,7 @@ export default function App() {
           {page === "dashboard" && <Dashboard />}
           {page === "audit" && <Audit />}
           {page === "flows" && <Flows />}
-          {page === "workflow" && <Workflow />}
+          {page === "workflow" && <Workflow status={status} />}
           {page === "impact" && <Impact />}
           {page === "dead-code" && <DeadCode />}
           {page === "dependencies" && <Dependencies />}

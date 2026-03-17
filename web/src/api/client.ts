@@ -4,6 +4,7 @@ import type {
   GraphNode,
   GraphStats,
   QueryResult,
+  RepoRefsResponse,
   RepoSupportResponse,
   StatusResponse,
 } from "../types";
@@ -76,6 +77,7 @@ export const api = {
         ref ? `&ref=${encodeURIComponent(ref)}` : ""
       }`,
     ),
+  repoRefs: (commitLimit = 20) => get<RepoRefsResponse>(`/repo-refs?commit_limit=${commitLimit}`),
   ingest: (source: string, ref?: string) => post<StatusResponse>("/ingest", { source, ref }),
   graphStats: () => get<GraphStats>("/graph/stats"),
   graphNodes: () => get<GraphNode[]>("/graph/nodes"),
@@ -101,8 +103,6 @@ export const api = {
     get<QueryResult>(`/call-flow?name=${encodeURIComponent(name)}&max_depth=${maxDepth}`),
   historyDrift: (limit = 10) => get<QueryResult>(`/history-drift?limit=${limit}`),
   prReview: (payload: {
-    changed_files?: string[];
-    diff_text?: string;
     base_ref?: string;
     head_ref?: string;
   }) => post<QueryResult>("/pr-review", payload),

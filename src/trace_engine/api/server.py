@@ -61,10 +61,23 @@ class AskRequest(BaseModel):
 
 
 class PullRequestReviewRequest(BaseModel):
-    changed_files: list[str] | None = None
-    diff_text: str | None = None
     base_ref: str | None = None
     head_ref: str | None = None
+
+
+class RepoRefOptionResponse(BaseModel):
+    value: str
+    label: str
+    kind: str
+    is_default: bool = False
+
+
+class RepoRefsResponse(BaseModel):
+    source_type: str
+    current_ref: str | None
+    default_branch: str | None
+    branches: list[RepoRefOptionResponse]
+    commits: list[RepoRefOptionResponse]
 
 
 def _get_trace() -> Trace:
@@ -287,11 +300,40 @@ def create_app(repo_path: str | None = None) -> FastAPI:
     def history_drift(limit: int = Query(10, ge=1, le=25)):
         return _get_trace().history_drift(limit=limit)
 
+    @app.get("/api/repo-refs", response_model=RepoRefsResponse)
+    def repo_refs(commit_limit: int = Query(20, ge=1, le=50)):
+        trace = _get_trace()
+        catalog = source_resolver.list_review_refs(
+            trace.repo_path,
+            current_ref=trace.source_ref,
+            commit_limit=commit_limit,
+        )
+        return RepoRefsResponse(
+            source_type="remote" if RepoSourceResolver.is_remote_source(trace.source) else "local",
+            current_ref=trace.source_ref,
+            default_branch=catalog.default_branch,
+            branches=[
+                RepoRefOptionResponse(
+                    value=branch.name,
+                    label=f"{branch.name}{' (default)' if branch.is_default else ''}",
+                    kind="branch",
+                    is_default=branch.is_default,
+                )
+                for branch in catalog.branches
+            ],
+            commits=[
+                RepoRefOptionResponse(
+                    value=commit.sha,
+                    label=f"{commit.short_sha} {commit.summary}",
+                    kind="commit",
+                )
+                for commit in catalog.commits
+            ],
+        )
+
     @app.post("/api/pr-review", response_model=QueryResult)
     def pr_review(req: PullRequestReviewRequest = Body(...)):
         return _get_trace().pr_review(
-            changed_files=req.changed_files,
-            diff_text=req.diff_text,
             base_ref=req.base_ref,
             head_ref=req.head_ref,
         )

@@ -16,10 +16,60 @@ class ResolvedRepoSource:
     local_path: Path
 
 
+@dataclass(frozen=True)
+class RepoBranchRef:
+    name: str
+    sha: str
+    is_default: bool = False
+
+
+@dataclass(frozen=True)
+class RepoCommitRef:
+    sha: str
+    short_sha: str
+    summary: str
+
+
+@dataclass(frozen=True)
+class RepoRefCatalog:
+    default_branch: str | None
+    branches: list[RepoBranchRef]
+    commits: list[RepoCommitRef]
+
+
 class RepoSourceResolver:
     """Resolve a repo source into a local directory, cloning remotes when needed."""
 
     CACHE_DIR = Path.home() / ".trace" / "remote_repos"
+
+    def list_review_refs(
+        self,
+        repo_path: str | Path,
+        *,
+        current_ref: str | None = None,
+        commit_limit: int = 20,
+    ) -> RepoRefCatalog:
+        git_bin = shutil.which("git")
+        if git_bin is None:
+            raise RuntimeError("git is required to inspect repository refs.")
+
+        local_repo = Path(repo_path).resolve()
+        if not (local_repo / ".git").is_dir():
+            raise RuntimeError("A Git checkout is required to inspect repository refs.")
+
+        default_branch = self._default_remote_branch(git_bin, local_repo)
+        branches = self._remote_branches(git_bin, local_repo, default_branch)
+        active_ref = current_ref or default_branch or (branches[0].name if branches else None)
+
+        if active_ref:
+            self._fetch_ref(git_bin, local_repo, active_ref, depth=max(commit_limit, 20))
+
+        commits = self._recent_commits(git_bin, local_repo, active_ref, limit=commit_limit)
+        return RepoRefCatalog(
+            default_branch=default_branch,
+            branches=branches,
+            commits=commits,
+        )
 
     def resolve(self, source: str, ref: str | None = None) -> ResolvedRepoSource:
         normalized = source.strip()
@@ -97,6 +147,102 @@ class RepoSourceResolver:
         cache_key = source if ref is None else f"{source}@{ref}"
         digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:12]
         return self.CACHE_DIR / f"{safe_stem}-{digest}"
+
+    def _default_remote_branch(self, git_bin: str, repo_path: Path) -> str | None:
+        proc = subprocess.run(
+            [git_bin, "-C", str(repo_path), "ls-remote", "--symref", "origin", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+
+        for line in proc.stdout.splitlines():
+            if not line.startswith("ref: ") or not line.endswith("\tHEAD"):
+                continue
+            ref_name = line.split()[1]
+            prefix = "refs/heads/"
+            if ref_name.startswith(prefix):
+                return ref_name[len(prefix):]
+        return None
+
+    def _remote_branches(self, git_bin: str, repo_path: Path, default_branch: str | None) -> list[RepoBranchRef]:
+        proc = subprocess.run(
+            [git_bin, "-C", str(repo_path), "ls-remote", "--heads", "origin"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "Unable to inspect remote branches.")
+
+        branches: list[RepoBranchRef] = []
+        prefix = "refs/heads/"
+        for line in proc.stdout.splitlines():
+            parts = line.split()
+            if len(parts) != 2 or not parts[1].startswith(prefix):
+                continue
+            name = parts[1][len(prefix):]
+            branches.append(
+                RepoBranchRef(
+                    name=name,
+                    sha=parts[0],
+                    is_default=name == default_branch,
+                )
+            )
+        return sorted(branches, key=lambda branch: (not branch.is_default, branch.name.lower()))
+
+    def _fetch_ref(self, git_bin: str, repo_path: Path, ref: str, *, depth: int) -> None:
+        refspec = ref if self._looks_like_commit_sha(ref) else f"+refs/heads/{ref}:refs/remotes/origin/{ref}"
+        subprocess.run(
+            [git_bin, "-C", str(repo_path), "fetch", "--depth", str(depth), "origin", refspec],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def _recent_commits(
+        self,
+        git_bin: str,
+        repo_path: Path,
+        ref: str | None,
+        *,
+        limit: int,
+    ) -> list[RepoCommitRef]:
+        target = ref or "HEAD"
+        remote_target = f"origin/{target}"
+        rev = remote_target
+        probe = subprocess.run(
+            [git_bin, "-C", str(repo_path), "rev-parse", "--verify", remote_target],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if probe.returncode != 0:
+            rev = target
+
+        proc = subprocess.run(
+            [git_bin, "-C", str(repo_path), "log", f"--max-count={limit}", "--pretty=format:%H%x09%h%x09%s", rev],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return []
+
+        commits: list[RepoCommitRef] = []
+        for line in proc.stdout.splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) != 3:
+                continue
+            commits.append(RepoCommitRef(sha=parts[0], short_sha=parts[1], summary=parts[2]))
+        return commits
+
+    @staticmethod
+    def _looks_like_commit_sha(value: str) -> bool:
+        lowered = value.lower()
+        return 7 <= len(lowered) <= 40 and all(ch in "0123456789abcdef" for ch in lowered)
 
     @staticmethod
     def _run(git_bin: str, args: list[str], source: str) -> None:

@@ -127,14 +127,10 @@ class Trace:
     def pr_review(
         self,
         *,
-        changed_files: list[str] | None = None,
-        diff_text: str | None = None,
         base_ref: str | None = None,
         head_ref: str | None = None,
     ) -> QueryResult:
         return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).pr_review(
-            changed_files=changed_files,
-            diff_text=diff_text,
             base_ref=base_ref,
             head_ref=head_ref,
         )

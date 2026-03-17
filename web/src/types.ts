@@ -62,6 +62,21 @@ export interface StatusResponse {
   edge_count: number;
 }
 
+export interface RepoRefOption {
+  value: string;
+  label: string;
+  kind: "branch" | "commit";
+  is_default: boolean;
+}
+
+export interface RepoRefsResponse {
+  source_type: string;
+  current_ref: string | null;
+  default_branch: string | null;
+  branches: RepoRefOption[];
+  commits: RepoRefOption[];
+}
+
 export interface AboutResponse {
   product_name: string;
   supported_languages: string[];

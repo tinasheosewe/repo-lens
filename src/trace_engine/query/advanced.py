@@ -353,26 +353,21 @@ class AdvancedAnalyzer:
     def pr_review(
         self,
         *,
-        changed_files: list[str] | None = None,
-        diff_text: str | None = None,
         base_ref: str | None = None,
         head_ref: str | None = None,
     ) -> QueryResult:
-        files = self._resolve_changed_files(
-            changed_files=changed_files,
-            diff_text=diff_text,
-            base_ref=base_ref,
-            head_ref=head_ref,
-        )
+        files = self._resolve_changed_files(base_ref=base_ref, head_ref=head_ref)
         if not files:
             return QueryResult(
-                conclusion="No changed files were provided or detected for PR review.",
+                conclusion="No changed files were detected for the selected refs.",
                 confidence=Confidence.MEDIUM,
             )
 
         impacted_nodes: set[str] = set()
-        evidence: list[Evidence] = []
+        changed_file_evidence: list[Evidence] = []
         nearby_tests: list[str] = []
+        changed_symbols: list[GraphNode] = []
+        changed_file_member_counts: dict[str, int] = {}
         for file_path in files:
             file_node = self._graph.get_node(file_path)
             if file_node:
@@ -382,30 +377,137 @@ class AdvancedAnalyzer:
                     for node in self._graph.get_transitive_dependents(file_node.id, {EdgeType.IMPORTS, EdgeType.CALLS})
                 )
             members = [node for node in self._graph.get_nodes_by_file(file_path) if node.node_type != NodeType.FILE]
+            changed_symbols.extend(members)
+            changed_file_member_counts[file_path] = len(members)
             for member in members:
+                impacted_nodes.add(member.id)
                 impacted_nodes.update(
                     node.id
                     for node in self._graph.get_transitive_dependents(member.id, {EdgeType.CALLS, EdgeType.IMPORTS})
                 )
-            nearby_tests.extend(self._find_nearby_tests(file_path))
-            evidence.append(
+            file_nearby_tests = self._find_nearby_tests(file_path)
+            nearby_tests.extend(file_nearby_tests)
+            changed_file_evidence.append(
                 Evidence(
                     file_path=file_path,
-                    description=f"Changed file with {len(members)} symbol(s) and {len(self._find_nearby_tests(file_path))} nearby test candidate(s)",
+                    description=f"Changed file with {len(members)} symbol(s) and {len(file_nearby_tests)} nearby test candidate(s)",
                     code_snippet=self._snippets.for_location(file_path, 1, 20),
                 )
             )
 
+        entry_points = self._entry_points(kind="all")
+        impacted_entry_points: list[tuple[GraphNode, str, str]] = []
+        for entry_node, entry_kind, reason in entry_points:
+            reachable = {node.id for node in self._graph.get_transitive_dependencies(entry_node.id, {EdgeType.CALLS, EdgeType.IMPORTS})}
+            if entry_node.id in impacted_nodes or reachable.intersection(impacted_nodes):
+                impacted_entry_points.append((entry_node, entry_kind, reason))
+
+        critical_result = self.rank_criticality(limit=12)
+        critical_node_ids = {node_id for node_id in critical_result.affected_nodes}
+        touched_critical_nodes = [
+            node for node in changed_symbols if node.id in critical_node_ids
+        ]
+        impacted_critical_nodes = [
+            self._graph.get_node(node_id)
+            for node_id in critical_result.affected_nodes
+            if node_id in impacted_nodes and self._graph.get_node(node_id) is not None
+        ]
+
+        hotspots = DependencyAnalyzer(self._graph, repo_root=self._repo_root).find_hotspots(threshold=3)
+        hotspot_files = sorted({evidence.file_path for evidence in hotspots.evidence if evidence.file_path in files})
+        nearby_test_set = sorted(set(nearby_tests))
+        test_gap_files = [file_path for file_path in files if not self._find_nearby_tests(file_path)]
+
+        risk_reasons: list[str] = []
+        risk_score = 0
+        if impacted_entry_points:
+            risk_score += 2
+            risk_reasons.append(f"{len(impacted_entry_points)} public or scheduled entry point(s) depend on the changed code")
+        if touched_critical_nodes:
+            risk_score += 2
+            risk_reasons.append(f"{len(touched_critical_nodes)} changed symbol(s) are already graph-critical")
+        if len(impacted_nodes) >= 12:
+            risk_score += 1
+            risk_reasons.append(f"blast radius reaches {len(impacted_nodes)} graph node(s)")
+        if test_gap_files:
+            risk_score += 1
+            risk_reasons.append(f"{len(test_gap_files)} changed file(s) have no nearby tests")
+        if hotspot_files:
+            risk_score += 1
+            risk_reasons.append(f"{len(hotspot_files)} changed file(s) are dependency hotspots")
+
+        risk_level = self._review_risk_level(risk_score)
+        if not risk_reasons:
+            risk_reasons.append("change appears locally scoped with nearby tests or low dependency spread")
+
+        evidence: list[Evidence] = []
+        evidence.extend(changed_file_evidence[:6])
+        evidence.extend(
+            Evidence(
+                file_path=node.file_path,
+                function_name=node.name,
+                line_start=node.line_start,
+                line_end=node.line_end,
+                code_snippet=self._snippets.for_node(node),
+                description=f"Impacted {entry_kind} entry point via {reason}",
+            )
+            for node, entry_kind, reason in impacted_entry_points[:4]
+        )
+        evidence.extend(
+            Evidence(
+                file_path=node.file_path,
+                function_name=node.name,
+                line_start=node.line_start,
+                line_end=node.line_end,
+                code_snippet=self._snippets.for_node(node),
+                description=f"Critical symbol in review scope: fan-in={self._graph.fan_in(node.id)} fan-out={self._graph.fan_out(node.id)}",
+            )
+            for node in impacted_critical_nodes[:4]
+            if node is not None
+        )
+
+        reasoning = [
+            ReasoningStep(step=1, description=f"Compared refs {base_ref or 'HEAD~1'} -> {head_ref or 'HEAD'} and found {len(files)} changed file(s)."),
+            ReasoningStep(step=2, description=f"Resolved {sum(changed_file_member_counts.values())} changed symbol(s) with a blast radius of {len(impacted_nodes)} node(s)."),
+            ReasoningStep(step=3, description=f"Detected {len(impacted_entry_points)} impacted entry point(s), {len(impacted_critical_nodes)} critical symbol(s) in scope, and {len(nearby_test_set)} nearby test candidate(s)."),
+        ]
+
+        conclusion = (
+            f"{risk_level.title()} risk review for {len(files)} changed file(s). "
+            + "; ".join(risk_reasons[:3])
+            + "."
+        )
+
         return QueryResult(
-            conclusion=(
-                f"Reviewed {len(files)} changed file(s); estimated impact reaches {len(impacted_nodes)} node(s), with {len(set(nearby_tests))} nearby test candidate(s)."
-            ),
+            conclusion=conclusion,
             evidence=evidence,
-            confidence=Confidence.MEDIUM,
+            reasoning_chain=reasoning,
+            confidence=Confidence.HIGH if risk_level == "low" else Confidence.MEDIUM,
             affected_nodes=sorted(impacted_nodes),
             metadata={
                 "changed_files": files,
-                "nearby_tests": sorted(set(nearby_tests)),
+                "nearby_tests": nearby_test_set,
+                "changed_symbol_count": sum(changed_file_member_counts.values()),
+                "risk_level": risk_level,
+                "risk_reasons": risk_reasons,
+                "impacted_entry_points": [
+                    {
+                        "name": node.name,
+                        "file_path": node.file_path,
+                        "kind": entry_kind,
+                    }
+                    for node, entry_kind, _reason in impacted_entry_points
+                ],
+                "critical_symbols": [
+                    {
+                        "name": node.name,
+                        "file_path": node.file_path,
+                    }
+                    for node in impacted_critical_nodes[:8]
+                    if node is not None
+                ],
+                "hotspot_files": hotspot_files,
+                "test_gap_files": test_gap_files,
             },
         )
 
@@ -602,29 +704,52 @@ class AdvancedAnalyzer:
     def _resolve_changed_files(
         self,
         *,
-        changed_files: list[str] | None,
-        diff_text: str | None,
         base_ref: str | None,
         head_ref: str | None,
     ) -> list[str]:
-        if changed_files:
-            return sorted(set(path.strip() for path in changed_files if path.strip()))
-        if diff_text:
-            matches = re.findall(r"\+\+\+\s+b/(.+)", diff_text)
-            if matches:
-                return sorted(set(matches))
         if self._repo_root is None or not (self._repo_root / ".git").exists():
             return []
-        args = ["git", "-C", str(self._repo_root), "diff", "--name-only"]
-        if base_ref and head_ref:
-            args.extend([base_ref, head_ref])
-        else:
-            args.extend(["HEAD~1", "HEAD"])
+        base_target, head_target = self._resolve_review_diff_targets(base_ref=base_ref, head_ref=head_ref)
+        if base_target is None or head_target is None:
+            return []
+        args = ["git", "-C", str(self._repo_root), "diff", "--name-only", base_target, head_target]
         try:
             output = subprocess.run(args, check=True, capture_output=True, text=True).stdout
         except subprocess.CalledProcessError:
             return []
         return sorted(set(line.strip() for line in output.splitlines() if line.strip()))
+
+    def _resolve_review_diff_targets(self, *, base_ref: str | None, head_ref: str | None) -> tuple[str | None, str | None]:
+        refs = [ref for ref in [base_ref, head_ref] if ref]
+        if self._repo_root is None or not refs:
+            return (None, None)
+        for ref in refs:
+            self._fetch_review_ref(ref)
+
+        resolved_base = self._normalize_review_ref(base_ref) if base_ref else "HEAD~1"
+        resolved_head = self._normalize_review_ref(head_ref) if head_ref else "HEAD"
+        return resolved_base, resolved_head
+
+    def _fetch_review_ref(self, ref: str) -> None:
+        refspec = ref if self._looks_like_commit_sha(ref) else f"+refs/heads/{ref}:refs/remotes/origin/{ref}"
+        subprocess.run(
+            ["git", "-C", str(self._repo_root), "fetch", "--depth", "50", "origin", refspec],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def _normalize_review_ref(self, ref: str) -> str:
+        remote_ref = f"origin/{ref}"
+        probe = subprocess.run(
+            ["git", "-C", str(self._repo_root), "rev-parse", "--verify", remote_ref],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if probe.returncode == 0:
+            return remote_ref
+        return ref
 
     def _find_nearby_tests(self, file_path: str) -> list[str]:
         if self._repo_root is None:
@@ -652,3 +777,16 @@ class AdvancedAnalyzer:
     @staticmethod
     def _short_name(node_id: str) -> str:
         return node_id.split("::")[-1] if "::" in node_id else node_id
+
+    @staticmethod
+    def _looks_like_commit_sha(value: str) -> bool:
+        lowered = value.lower()
+        return 7 <= len(lowered) <= 40 and all(ch in "0123456789abcdef" for ch in lowered)
+
+    @staticmethod
+    def _review_risk_level(score: int) -> str:
+        if score >= 5:
+            return "high"
+        if score >= 3:
+            return "medium"
+        return "low"
