@@ -59,6 +59,16 @@ def test_repo_support_reports_detected_languages(tmp_path: Path):
     assert data["active_extensions"] == [".py"]
 
 
+def test_health_endpoint_does_not_require_session_header():
+    app = server.create_app()
+    client = TestClient(app)
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
 def test_create_app_preloads_repo_from_trace_repo_path_env(tmp_path: Path, monkeypatch):
     source_dir = tmp_path / "repo"
     source_dir.mkdir()

@@ -50,6 +50,10 @@ class StatusResponse(BaseModel):
     edge_count: int = 0
 
 
+class HealthResponse(BaseModel):
+    ok: bool
+
+
 class AboutResponse(BaseModel):
     product_name: str
     supported_languages: list[str]
@@ -363,6 +367,10 @@ def create_app(repo_path: str | None = None) -> FastAPI:
                 repo_source_type="remote" if RepoSourceResolver.is_remote_source(trace.source) else "local",
                 repo_ref=trace.source_ref,
             )
+
+    @app.get("/api/health", response_model=HealthResponse)
+    def health():
+        return HealthResponse(ok=True)
 
     @app.post("/api/ingest", response_model=StatusResponse)
     def ingest(request: Request, req: IngestRequest = Body(...)):

@@ -11,7 +11,7 @@ services:
       npm ci
       npm run build
     startCommand: uvicorn trace_engine.api.server:create_app --factory --host 0.0.0.0 --port $PORT
-    healthCheckPath: /api/status
+    healthCheckPath: /api/health
     autoDeployTrigger: commit
     envVars:
       - key: PYTHON_VERSION
