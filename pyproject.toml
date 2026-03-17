@@ -1,0 +1,31 @@
+[project]
+name = "trace-engine"
+version = "0.1.0"
+description = "Deterministic codebase understanding with AI-assisted reasoning"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "networkx>=3.0",
+    "typer>=0.9",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+trace = "trace_engine.cli.app:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trace_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
