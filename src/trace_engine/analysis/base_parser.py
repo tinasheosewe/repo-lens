@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
+from pathlib import PurePosixPath
 
 from pydantic import BaseModel, Field
 
@@ -39,9 +41,35 @@ class BaseParser(ABC):
     """Language-specific AST parser interface."""
 
     @abstractmethod
+    def language_name(self) -> str:
+        """Human-readable language name (e.g. ``'Python'``)."""
+
+    @abstractmethod
     def parse_file(self, file_path: str, content: str) -> ParseResult:
         """Parse *content* and return nodes, edges, and unresolved refs."""
 
     @abstractmethod
     def supported_extensions(self) -> set[str]:
         """File extensions this parser handles (e.g. ``{'.py'}``)."""
+
+    def repository_markers(self) -> set[str]:
+        """Return filenames that indicate a repository likely uses this language."""
+        return set()
+
+    def can_parse(self, file_path: str) -> bool:
+        """Return whether this parser can parse *file_path*."""
+        return PurePosixPath(file_path).suffix in self.supported_extensions()
+
+    def matches_repository(self, file_paths: Iterable[str]) -> bool:
+        """Return whether this parser should activate for the given repository."""
+        markers = self.repository_markers()
+        for file_path in file_paths:
+            if self.can_parse(file_path):
+                return True
+            if PurePosixPath(file_path).name in markers:
+                return True
+        return False
+
+    def classify_file(self, file_path: str, content: str | None = None) -> str | None:
+        """Return an optional file-category hint for *file_path*."""
+        return None

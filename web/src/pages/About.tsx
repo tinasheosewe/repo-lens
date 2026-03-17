@@ -215,6 +215,34 @@ export default function About({ status, onRepoLoaded }: Props) {
               <div className="mt-3 text-xs text-current/80">
                 {support.supported_file_count} supported file(s) found
               </div>
+              {!!support.detected_languages.length && (
+                <div className="mt-3">
+                  <div className="text-[11px] uppercase tracking-wider text-current/70 mb-2">
+                    Detected Languages
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {support.detected_languages.map((language) => (
+                      <span key={language} className="rounded-full border border-current/15 px-2 py-0.5 text-[11px]">
+                        {language}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!!support.active_extensions.length && (
+                <div className="mt-3">
+                  <div className="text-[11px] uppercase tracking-wider text-current/70 mb-2">
+                    Active Parser Extensions
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {support.active_extensions.map((ext) => (
+                      <span key={ext} className="rounded-full border border-current/15 px-2 py-0.5 text-[11px] font-mono">
+                        {ext}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="mt-2 text-[11px] text-current/80 break-all">
                 Cached checkout: {support.resolved_path}
               </div>

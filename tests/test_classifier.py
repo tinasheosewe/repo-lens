@@ -2,12 +2,13 @@
 
 import pytest
 
+from trace_engine.analysis.python_parser import PythonParser
 from trace_engine.ingestion.classifier import FileCategory, FileClassifier
 
 
 @pytest.fixture
 def cls():
-    return FileClassifier()
+    return FileClassifier(parsers=[PythonParser()])
 
 
 class TestSourceFiles:
@@ -28,6 +29,10 @@ class TestTestFiles:
     def test_conftest(self, cls: FileClassifier):
         assert cls.classify("tests/conftest.py") == FileCategory.TEST
 
+    def test_pytest_content_without_test_path(self, cls: FileClassifier):
+        content = "import pytest\n\ndef test_login():\n    assert True\n"
+        assert cls.classify("checks/login_spec.py", content=content) == FileCategory.TEST
+
 
 class TestConfigFiles:
     def test_config_py(self, cls: FileClassifier):
@@ -38,6 +43,9 @@ class TestConfigFiles:
 
     def test_yaml(self, cls: FileClassifier):
         assert cls.classify("settings.yaml") == FileCategory.CONFIG
+
+    def test_config_directory(self, cls: FileClassifier):
+        assert cls.classify("configs/runtime/feature_flags") == FileCategory.CONFIG
 
 
 class TestInfraFiles:
@@ -57,6 +65,9 @@ class TestDocFiles:
 
     def test_rst(self, cls: FileClassifier):
         assert cls.classify("docs/guide.rst") == FileCategory.DOCUMENTATION
+
+    def test_license_without_extension(self, cls: FileClassifier):
+        assert cls.classify("LICENSE") == FileCategory.DOCUMENTATION
 
 
 class TestUnknown:

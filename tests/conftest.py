@@ -29,12 +29,13 @@ def python_parser() -> PythonParser:
 
 @pytest.fixture
 def classifier() -> FileClassifier:
-    return FileClassifier()
+    return FileClassifier(parsers=[PythonParser()])
 
 
 @pytest.fixture
 def graph_builder() -> GraphBuilder:
-    return GraphBuilder(parsers=[PythonParser()], classifier=FileClassifier())
+    parser = PythonParser()
+    return GraphBuilder(parsers=[parser], classifier=FileClassifier(parsers=[parser]))
 
 
 @pytest.fixture

@@ -79,6 +79,8 @@ export interface RepoSupportResponse {
   reason: string;
   supported_file_count: number;
   detected_extensions: string[];
+  detected_languages: string[];
+  active_extensions: string[];
 }
 
 export type Page =

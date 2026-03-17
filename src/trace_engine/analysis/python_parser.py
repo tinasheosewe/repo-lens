@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import PurePosixPath
 
+from trace_engine.ingestion.classifier import FileCategory
 from trace_engine.models.graph import EdgeType, GraphEdge, GraphNode, NodeType
 
 from .base_parser import BaseParser, ImportInfo, ParseResult, UnresolvedCall
@@ -11,8 +12,32 @@ from .base_parser import BaseParser, ImportInfo, ParseResult, UnresolvedCall
 class PythonParser(BaseParser):
     """Extract structure from Python source files."""
 
+    _REPOSITORY_MARKERS = {
+        "pyproject.toml",
+        "requirements.txt",
+        "requirements-dev.txt",
+        "Pipfile",
+        "poetry.lock",
+        "setup.py",
+        "setup.cfg",
+        "tox.ini",
+    }
+
+    def language_name(self) -> str:
+        return "Python"
+
     def supported_extensions(self) -> set[str]:
         return {".py"}
+
+    def repository_markers(self) -> set[str]:
+        return self._REPOSITORY_MARKERS
+
+    def classify_file(self, file_path: str, content: str | None = None) -> str | None:
+        if PurePosixPath(file_path).suffix != ".py":
+            return None
+        if content and self._looks_like_test_module(content):
+            return FileCategory.TEST.value
+        return FileCategory.SOURCE.value
 
     def parse_file(self, file_path: str, content: str) -> ParseResult:
         try:
@@ -23,6 +48,20 @@ class PythonParser(BaseParser):
         visitor = _PythonVisitor(file_path, content)
         visitor.visit(tree)
         return visitor.result()
+
+    @staticmethod
+    def _looks_like_test_module(content: str) -> bool:
+        return any(
+            marker in content
+            for marker in (
+                "import pytest",
+                "from pytest",
+                "import unittest",
+                "from unittest",
+                "def test_",
+                "class Test",
+            )
+        )
 
 
 # ------------------------------------------------------------------

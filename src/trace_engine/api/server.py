@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from trace_engine.analysis.parser_registry import DEFAULT_PARSER_REGISTRY
 from trace_engine.core import Trace
 from trace_engine.ingestion.loader import RepoLoader
 from trace_engine.ingestion.source_resolver import RepoSourceResolver, ResolvedRepoSource
@@ -51,6 +52,8 @@ class RepoSupportResponse(BaseModel):
     reason: str
     supported_file_count: int
     detected_extensions: list[str]
+    detected_languages: list[str]
+    active_extensions: list[str]
 
 
 def _get_trace() -> Trace:
@@ -76,7 +79,7 @@ def create_app(repo_path: str | None = None) -> FastAPI:
     # Routes
     # -----------------------------------------------------------------------
 
-    loader = RepoLoader()
+    loader = RepoLoader(parsers=list(DEFAULT_PARSER_REGISTRY.parsers))
     source_resolver = RepoSourceResolver()
 
     def inspect_repo(source: str, ref: str | None = None) -> tuple[ResolvedRepoSource, RepoSupportResponse]:
@@ -99,6 +102,8 @@ def create_app(repo_path: str | None = None) -> FastAPI:
             reason=inspection.reason,
             supported_file_count=inspection.supported_file_count,
             detected_extensions=inspection.detected_extensions,
+            detected_languages=inspection.detected_languages,
+            active_extensions=inspection.active_extensions,
         )
 
     @app.get("/api/status", response_model=StatusResponse)
@@ -147,13 +152,13 @@ def create_app(repo_path: str | None = None) -> FastAPI:
     def about():
         return AboutResponse(
             product_name="Trace",
-            supported_languages=["Python"],
-            supported_extensions=sorted(loader.SUPPORTED_EXTENSIONS),
+            supported_languages=DEFAULT_PARSER_REGISTRY.supported_languages,
+            supported_extensions=sorted(DEFAULT_PARSER_REGISTRY.supported_extensions),
             ignored_directories=sorted(loader.IGNORED_DIRS),
             summary=(
-                "Trace currently loads Git repository sources and parses Python repositories. "
-                "It builds a graph from supported source files and ignores generated, cached, "
-                "and dependency directories."
+                "Trace loads Git repository sources, detects supported languages automatically, "
+                "and activates the matching parsers without repo-specific setup. "
+                "It builds a graph from analyzable source files and ignores generated, cached, and dependency directories."
             ),
         )
 
@@ -261,7 +266,12 @@ def _init_trace(repo_source: str | ResolvedRepoSource) -> None:
         if isinstance(repo_source, ResolvedRepoSource)
         else RepoSourceResolver().resolve(repo_source)
     )
-    _trace = Trace(resolved.local_path, source=resolved.source, ref=resolved.ref)
+    _trace = Trace(
+        resolved.local_path,
+        source=resolved.source,
+        ref=resolved.ref,
+        parser_registry=DEFAULT_PARSER_REGISTRY,
+    )
     try:
         _trace.graph  # load cached graph if available
     except RuntimeError:

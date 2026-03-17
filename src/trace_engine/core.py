@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from trace_engine.analysis.graph_builder import GraphBuilder
-from trace_engine.analysis.python_parser import PythonParser
+from trace_engine.analysis.parser_registry import DEFAULT_PARSER_REGISTRY, ParserRegistry
 from trace_engine.ingestion.classifier import FileClassifier
 from trace_engine.ingestion.loader import RepoLoader
 from trace_engine.models.code_graph import CodeGraph
@@ -22,14 +22,24 @@ _PROJECT_ID = "default"
 class Trace:
     """Top-level façade for the Trace system."""
 
-    def __init__(self, repo_path: str | Path, *, source: str | None = None, ref: str | None = None) -> None:
+    def __init__(
+        self,
+        repo_path: str | Path,
+        *,
+        source: str | None = None,
+        ref: str | None = None,
+        parser_registry: ParserRegistry | None = None,
+    ) -> None:
         self.repo_path = Path(repo_path).resolve()
         self.source = source or str(self.repo_path)
         self.source_ref = ref
-        self._loader = RepoLoader()
-        self._classifier = FileClassifier()
+        self._parser_registry = parser_registry or DEFAULT_PARSER_REGISTRY
+        detection_loader = RepoLoader(parsers=list(self._parser_registry.parsers))
+        self._parsers = list(detection_loader.detect_parsers(self.repo_path))
+        self._loader = RepoLoader(parsers=self._parsers)
+        self._classifier = FileClassifier(parsers=self._parsers)
         self._builder = GraphBuilder(
-            parsers=[PythonParser()], classifier=self._classifier
+            parsers=self._parsers, classifier=self._classifier
         )
         self._repo = FileGraphRepository(self.repo_path / ".trace")
         self._graph: CodeGraph | None = None

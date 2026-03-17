@@ -41,7 +41,10 @@ class GraphBuilder:
         for result in parse_results:
             for node in result.nodes:
                 if node.node_type == NodeType.FILE:
-                    cat = self._classifier.classify(node.file_path)
+                    cat = self._classifier.classify(
+                        node.file_path,
+                        content=files.get(node.file_path),
+                    )
                     node.metadata["category"] = cat.value
                 graph.add_node(node)
             for edge in result.internal_edges:
