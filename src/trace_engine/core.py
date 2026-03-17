@@ -70,7 +70,7 @@ class Trace:
         return QueryEngine(self.graph).find_usages(name)
 
     def dead_code(self) -> QueryResult:
-        return DeadCodeDetector(self.graph).detect()
+        return DeadCodeDetector(self.graph, repo_root=self.repo_path).detect()
 
     def endpoints(self) -> QueryResult:
         return QueryEngine(self.graph).list_endpoints()

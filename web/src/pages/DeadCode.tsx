@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { Trash2, AlertTriangle, Info } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { Trash2, AlertTriangle, ChevronDown, ChevronRight, Info } from "lucide-react";
 import { api } from "../api/client";
-import type { QueryResult } from "../types";
+import type { Evidence, QueryResult } from "../types";
 
 /* ------------------------------------------------------------------ */
 /* Severity badge                                                      */
@@ -38,6 +38,7 @@ function Severity({ level }: { level: string }) {
 export default function DeadCode() {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     api.deadCode().then((r) => {
@@ -47,6 +48,14 @@ export default function DeadCode() {
   }, []);
 
   const items = result?.evidence ?? [];
+
+  const toggleExpanded = (ev: Evidence, index: number) => {
+    const key = `${ev.file_path}:${ev.function_name ?? index}`;
+    setExpanded((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -110,28 +119,65 @@ export default function DeadCode() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((ev, i) => (
-                  <tr
-                    key={i}
-                    className="border-b border-t-border/20 hover:bg-white/[0.02] transition-colors"
-                    style={{
-                      animationDelay: `${i * 30}ms`,
-                    }}
-                  >
-                    <td className="px-5 py-3">
-                      <span className="text-gray-200 font-mono text-xs">
-                        {ev.description}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-xs text-gray-500 font-mono">
-                      {ev.file_path || "—"}
-                      {ev.line_start ? `:${ev.line_start}` : ""}
-                    </td>
-                    <td className="px-5 py-3">
-                      <Severity level={ev.function_name ? "medium" : "low"} />
-                    </td>
-                  </tr>
-                ))}
+                {items.map((ev, i) => {
+                  const rowKey = `${ev.file_path}:${ev.function_name ?? i}`;
+                  const isExpanded = !!expanded[rowKey];
+
+                  return (
+                    <Fragment key={rowKey}>
+                      <tr
+                        className="border-b border-t-border/20 hover:bg-white/[0.02] transition-colors cursor-pointer"
+                        style={{
+                          animationDelay: `${i * 30}ms`,
+                        }}
+                        onClick={() => toggleExpanded(ev, i)}
+                      >
+                        <td className="px-5 py-3">
+                          <div className="flex items-start gap-2">
+                            <span className="mt-0.5 text-gray-500">
+                              {isExpanded ? (
+                                <ChevronDown size={14} />
+                              ) : (
+                                <ChevronRight size={14} />
+                              )}
+                            </span>
+                            <div>
+                              <span className="text-gray-200 font-mono text-xs">
+                                {ev.function_name || ev.description}
+                              </span>
+                              {ev.function_name && (
+                                <p className="mt-1 text-[11px] text-gray-500">
+                                  {ev.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-xs text-gray-500 font-mono">
+                          {ev.file_path || "—"}
+                          {ev.line_start ? `:${ev.line_start}` : ""}
+                        </td>
+                        <td className="px-5 py-3">
+                          <Severity level={ev.function_name ? "medium" : "low"} />
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="border-b border-t-border/20 bg-black/10">
+                          <td colSpan={3} className="px-5 pb-4 pt-0">
+                            <div className="ml-6 rounded-lg border border-t-border/40 bg-gray-950/50 overflow-hidden">
+                              <div className="px-4 py-2 text-[11px] uppercase tracking-wider text-gray-500 border-b border-t-border/30">
+                                Function Body
+                              </div>
+                              <pre className="overflow-x-auto px-4 py-3 text-xs leading-6 text-gray-300 font-mono whitespace-pre-wrap">
+                                {ev.code_snippet || "Source snippet unavailable for this function."}
+                              </pre>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
                 {items.length === 0 && (
                   <tr>
                     <td
