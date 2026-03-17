@@ -45,6 +45,26 @@ class RepoSourceResolver:
     CACHE_DIR = Path.home() / ".trace" / "remote_repos"
     DEFAULT_MAX_CLONE_BYTES = 250 * 1024 * 1024
 
+    @classmethod
+    def is_managed_cache_path(cls, path: str | Path) -> bool:
+        try:
+            resolved = Path(path).resolve()
+        except OSError:
+            return False
+
+        try:
+            resolved.relative_to(cls.CACHE_DIR.resolve())
+        except ValueError:
+            return False
+        return True
+
+    @classmethod
+    def remove_managed_cache_path(cls, path: str | Path) -> None:
+        resolved = Path(path).resolve()
+        if not cls.is_managed_cache_path(resolved):
+            return
+        shutil.rmtree(resolved, ignore_errors=True)
+
     def list_review_refs(
         self,
         repo_path: str | Path,
@@ -74,14 +94,14 @@ class RepoSourceResolver:
             commits=commits,
         )
 
-    def resolve(self, source: str, ref: str | None = None) -> ResolvedRepoSource:
+    def resolve(self, source: str, ref: str | None = None, *, session_id: str | None = None) -> ResolvedRepoSource:
         normalized = source.strip()
         normalized_ref = ref.strip() if ref else None
         if not normalized:
             raise ValueError("Repository source cannot be empty.")
 
         if self.is_remote_source(normalized):
-            local_path = self._clone_or_update(normalized, normalized_ref)
+            local_path = self._clone_or_update(normalized, normalized_ref, session_id=session_id)
             return ResolvedRepoSource(
                 source=normalized,
                 display_source=normalized,
@@ -109,12 +129,12 @@ class RepoSourceResolver:
             return True
         return False
 
-    def _clone_or_update(self, source: str, ref: str | None) -> Path:
+    def _clone_or_update(self, source: str, ref: str | None, *, session_id: str | None = None) -> Path:
         git_bin = shutil.which("git")
         if git_bin is None:
             raise RuntimeError("git is required to load remote repositories.")
 
-        repo_dir = self._cache_path_for(source, ref)
+        repo_dir = self._cache_path_for(source, ref, session_id=session_id)
         repo_dir.parent.mkdir(parents=True, exist_ok=True)
 
         branch_args = ["--branch", ref] if ref else []
@@ -160,11 +180,13 @@ class RepoSourceResolver:
         remote_url = self._git_remote_url(local_path)
         return remote_url or normalized
 
-    def _cache_path_for(self, source: str, ref: str | None) -> Path:
+    def _cache_path_for(self, source: str, ref: str | None, *, session_id: str | None = None) -> Path:
         parsed = urlparse(source)
         stem = Path(parsed.path or source).stem or "repo"
         safe_stem = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in stem)
         cache_key = source if ref is None else f"{source}@{ref}"
+        if session_id:
+            cache_key = f"{cache_key}#{session_id}"
         digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:12]
         return self.CACHE_DIR / f"{safe_stem}-{digest}"
 

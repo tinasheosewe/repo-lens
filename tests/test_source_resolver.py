@@ -81,6 +81,27 @@ class TestRepoSourceResolver:
         assert resolved.ref == "feature/test-ref"
         assert "feature" in (resolved.local_path / "app.py").read_text(encoding="utf-8")
 
+    def test_remote_cache_path_isolated_by_session(self, tmp_path: Path):
+        resolver = RepoSourceResolver()
+
+        worktree = tmp_path / "worktree_session"
+        worktree.mkdir()
+        (worktree / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+
+        _git("init", cwd=worktree)
+        _git("config", "user.name", "Trace Test", cwd=worktree)
+        _git("config", "user.email", "trace@example.com", cwd=worktree)
+        _git("add", "app.py", cwd=worktree)
+        _git("commit", "-m", "initial", cwd=worktree)
+
+        bare = tmp_path / "remote_session.git"
+        _git("clone", "--bare", str(worktree), str(bare))
+
+        session_one = resolver.resolve(bare.as_uri(), session_id="session-one")
+        session_two = resolver.resolve(bare.as_uri(), session_id="session-two")
+
+        assert session_one.local_path != session_two.local_path
+
     def test_uses_origin_url_as_display_source_for_dot(self, tmp_path: Path, monkeypatch):
         resolver = RepoSourceResolver()
 

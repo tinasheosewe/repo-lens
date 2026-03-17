@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from trace_engine.api import server
+
+
+SESSION_HEADERS = {server.TRACE_SESSION_HEADER: "test-session"}
 
 
 def _git(*args: str, cwd: Path) -> None:
@@ -26,11 +30,10 @@ def test_ingest_accepts_json_body(tmp_path: Path):
     source_dir.mkdir()
     (source_dir / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
 
-    server._trace = None
     app = server.create_app()
     client = TestClient(app)
 
-    response = client.post("/api/ingest", json={"source": str(source_dir)})
+    response = client.post("/api/ingest", json={"source": str(source_dir)}, headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
@@ -44,7 +47,6 @@ def test_repo_support_reports_detected_languages(tmp_path: Path):
     source_dir.mkdir()
     (source_dir / "pyproject.toml").write_text("[project]\nname = 'demo'\n", encoding="utf-8")
 
-    server._trace = None
     app = server.create_app()
     client = TestClient(app)
 
@@ -63,11 +65,10 @@ def test_create_app_preloads_repo_from_trace_repo_path_env(tmp_path: Path, monke
     (source_dir / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
 
     monkeypatch.setenv("TRACE_REPO_PATH", str(source_dir))
-    server._trace = None
     app = server.create_app()
     client = TestClient(app)
 
-    response = client.get("/api/status")
+    response = client.get("/api/status", headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
@@ -92,14 +93,13 @@ def test_status_reports_display_source_for_dot_git_repo(tmp_path: Path, monkeypa
     _git("remote", "add", "origin", bare.as_uri(), cwd=repo)
 
     monkeypatch.chdir(repo)
-    server._trace = None
     app = server.create_app()
     client = TestClient(app)
 
-    ingest_response = client.post("/api/ingest", json={"source": "."})
+    ingest_response = client.post("/api/ingest", json={"source": "."}, headers=SESSION_HEADERS)
     assert ingest_response.status_code == 200
 
-    response = client.get("/api/status")
+    response = client.get("/api/status", headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
@@ -112,14 +112,13 @@ def test_onboarding_endpoint_returns_summary(tmp_path: Path):
     source_dir.mkdir()
     (source_dir / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
 
-    server._trace = None
     app = server.create_app()
     client = TestClient(app)
 
-    ingest_response = client.post("/api/ingest", json={"source": str(source_dir)})
+    ingest_response = client.post("/api/ingest", json={"source": str(source_dir)}, headers=SESSION_HEADERS)
     assert ingest_response.status_code == 200
 
-    response = client.get("/api/onboarding")
+    response = client.get("/api/onboarding", headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
@@ -132,14 +131,13 @@ def test_ask_endpoint_returns_config_message_without_llm(tmp_path: Path, monkeyp
     (source_dir / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
     monkeypatch.delenv("TRACE_LLM_API_KEY", raising=False)
 
-    server._trace = None
     app = server.create_app()
     client = TestClient(app)
 
-    ingest_response = client.post("/api/ingest", json={"source": str(source_dir)})
+    ingest_response = client.post("/api/ingest", json={"source": str(source_dir)}, headers=SESSION_HEADERS)
     assert ingest_response.status_code == 200
 
-    response = client.post("/api/ask", json={"question": "What is the entry point?"})
+    response = client.post("/api/ask", json={"question": "What is the entry point?"}, headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
@@ -164,16 +162,143 @@ def test_repo_refs_endpoint_returns_branch_and_commit_options(tmp_path: Path):
     bare = tmp_path / "remote.git"
     _git("clone", "--bare", str(worktree), str(bare), cwd=tmp_path)
 
-    server._trace = None
     app = server.create_app()
     client = TestClient(app)
 
-    ingest_response = client.post("/api/ingest", json={"source": bare.as_uri(), "ref": "feature/review"})
+    ingest_response = client.post(
+        "/api/ingest",
+        json={"source": bare.as_uri(), "ref": "feature/review"},
+        headers=SESSION_HEADERS,
+    )
     assert ingest_response.status_code == 200
 
-    response = client.get("/api/repo-refs")
+    response = client.get("/api/repo-refs", headers=SESSION_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
     assert any(option["value"] == "feature/review" for option in data["branches"])
     assert data["commits"]
+
+
+def test_sessions_do_not_override_each_other(tmp_path: Path):
+    repo_one = tmp_path / "repo-one"
+    repo_one.mkdir()
+    (repo_one / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+
+    repo_two = tmp_path / "repo-two"
+    repo_two.mkdir()
+    (repo_two / "worker.py").write_text("def run():\n    return 2\n", encoding="utf-8")
+
+    app = server.create_app()
+    client = TestClient(app)
+
+    session_one = {server.TRACE_SESSION_HEADER: "session-one"}
+    session_two = {server.TRACE_SESSION_HEADER: "session-two"}
+
+    response_one = client.post("/api/ingest", json={"source": str(repo_one)}, headers=session_one)
+    response_two = client.post("/api/ingest", json={"source": str(repo_two)}, headers=session_two)
+
+    assert response_one.status_code == 200
+    assert response_two.status_code == 200
+
+    status_one = client.get("/api/status", headers=session_one)
+    status_two = client.get("/api/status", headers=session_two)
+
+    assert status_one.status_code == 200
+    assert status_two.status_code == 200
+    assert status_one.json()["repo_source"] == str(repo_one)
+    assert status_two.json()["repo_source"] == str(repo_two)
+
+
+def test_expired_session_is_evicted(tmp_path: Path, monkeypatch):
+    source_dir = tmp_path / "repo"
+    source_dir.mkdir()
+    (source_dir / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+
+    now = 1_000.0
+    monkeypatch.setenv("TRACE_SESSION_TTL_SECONDS", "5")
+    monkeypatch.setattr(server, "_current_time", lambda: now)
+
+    app = server.create_app()
+    client = TestClient(app)
+
+    ingest_response = client.post("/api/ingest", json={"source": str(source_dir)}, headers=SESSION_HEADERS)
+    assert ingest_response.status_code == 200
+
+    now = 1_007.0
+    response = client.get("/api/status", headers=SESSION_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json()["loaded"] is False
+
+
+def test_expired_remote_session_removes_cached_checkout(tmp_path: Path, monkeypatch):
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+
+    _git("init", cwd=worktree)
+    _git("config", "user.name", "Trace Test", cwd=worktree)
+    _git("config", "user.email", "trace@example.com", cwd=worktree)
+    _git("add", "app.py", cwd=worktree)
+    _git("commit", "-m", "initial", cwd=worktree)
+
+    bare = tmp_path / "remote.git"
+    _git("clone", "--bare", str(worktree), str(bare), cwd=tmp_path)
+
+    now = 2_000.0
+    monkeypatch.setenv("TRACE_SESSION_TTL_SECONDS", "5")
+    monkeypatch.setattr(server, "_current_time", lambda: now)
+
+    app = server.create_app()
+    client = TestClient(app)
+    remote_headers = {server.TRACE_SESSION_HEADER: "expiring-session"}
+
+    ingest_response = client.post("/api/ingest", json={"source": bare.as_uri()}, headers=remote_headers)
+    assert ingest_response.status_code == 200
+
+    cached_path = Path(ingest_response.json()["repo_path"])
+    assert cached_path.exists()
+
+    now = 2_007.0
+    response = client.get("/api/status", headers=remote_headers)
+
+    assert response.status_code == 200
+    assert response.json()["loaded"] is False
+    assert not cached_path.exists()
+
+
+def test_background_cleanup_expires_remote_session_without_request(tmp_path: Path, monkeypatch):
+    worktree = tmp_path / "background-worktree"
+    worktree.mkdir()
+    (worktree / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+
+    _git("init", cwd=worktree)
+    _git("config", "user.name", "Trace Test", cwd=worktree)
+    _git("config", "user.email", "trace@example.com", cwd=worktree)
+    _git("add", "app.py", cwd=worktree)
+    _git("commit", "-m", "initial", cwd=worktree)
+
+    bare = tmp_path / "background-remote.git"
+    _git("clone", "--bare", str(worktree), str(bare), cwd=tmp_path)
+
+    now = 3_000.0
+    monkeypatch.setenv("TRACE_SESSION_TTL_SECONDS", "1")
+    monkeypatch.setenv("TRACE_SESSION_SWEEP_INTERVAL_SECONDS", "1")
+    monkeypatch.setattr(server, "_current_time", lambda: now)
+
+    app = server.create_app()
+    remote_headers = {server.TRACE_SESSION_HEADER: "background-expiring-session"}
+
+    with TestClient(app) as client:
+        ingest_response = client.post("/api/ingest", json={"source": bare.as_uri()}, headers=remote_headers)
+        assert ingest_response.status_code == 200
+
+        cached_path = Path(ingest_response.json()["repo_path"])
+        assert cached_path.exists()
+
+        now = 3_005.0
+        time.sleep(1.2)
+
+        assert not app.state.trace_sessions
+        assert not cached_path.exists()

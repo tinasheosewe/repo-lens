@@ -26,6 +26,28 @@ function resolveApiBase(): string {
 }
 
 const BASE = resolveApiBase();
+const SESSION_STORAGE_KEY = "trace.session.id";
+
+function getSessionId(): string {
+  if (typeof window === "undefined") {
+    return "trace-server";
+  }
+
+  const existing = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+  if (existing) {
+    return existing;
+  }
+
+  const next = window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.sessionStorage.setItem(SESSION_STORAGE_KEY, next);
+  return next;
+}
+
+function requestHeaders(headers?: HeadersInit): Headers {
+  const nextHeaders = new Headers(headers);
+  nextHeaders.set("X-Trace-Session", getSessionId());
+  return nextHeaders;
+}
 
 async function parseResponse<T>(res: Response): Promise<T> {
   const contentType = res.headers.get("content-type") || "";
@@ -41,7 +63,9 @@ async function parseResponse<T>(res: Response): Promise<T> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+  const res = await fetch(`${BASE}${path}`, {
+    headers: requestHeaders(),
+  });
   if (!res.ok) {
     const body = await parseResponse<{ detail?: string } | { detail?: Array<{ msg?: string }> }>(res).catch(() => ({}));
     const detail = Array.isArray((body as { detail?: Array<{ msg?: string }> }).detail)
@@ -55,7 +79,7 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: requestHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
