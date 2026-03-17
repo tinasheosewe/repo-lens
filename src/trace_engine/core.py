@@ -142,11 +142,5 @@ class Trace:
     def refactor_plan(self) -> QueryResult:
         return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).refactor_plan()
 
-    def migration_tracker(self, *, legacy_terms: list[str], target_term: str | None = None) -> QueryResult:
-        return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).migration_tracker(
-            legacy_terms=legacy_terms,
-            target_term=target_term,
-        )
-
     def ask_architecture(self, question: str) -> QueryResult:
         return AdvancedAnalyzer(self.graph, repo_root=self.repo_path).ask_architecture(question)

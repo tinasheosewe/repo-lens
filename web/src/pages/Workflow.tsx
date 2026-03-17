@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { GitPullRequestArrow, Wrench, Milestone } from "lucide-react";
+import { GitPullRequestArrow, Wrench } from "lucide-react";
 import { api } from "../api/client";
 import type { QueryResult } from "../types";
 import ResultPanel from "../components/ResultPanel";
 
-type Tab = "pr-review" | "refactor" | "migration";
+type Tab = "pr-review" | "refactor";
 
 function TabButton({ active, label, onClick, icon: Icon }: { active: boolean; label: string; onClick: () => void; icon: React.ElementType }) {
   return (
@@ -26,19 +26,15 @@ export default function Workflow() {
   const [results, setResults] = useState<Record<Tab, QueryResult | null>>({
     "pr-review": null,
     refactor: null,
-    migration: null,
   });
   const [loading, setLoading] = useState<Record<Tab, boolean>>({
     "pr-review": false,
     refactor: false,
-    migration: false,
   });
   const [changedFiles, setChangedFiles] = useState("");
   const [baseRef, setBaseRef] = useState("");
   const [headRef, setHeadRef] = useState("");
   const [diffText, setDiffText] = useState("");
-  const [legacyTerms, setLegacyTerms] = useState("");
-  const [targetTerm, setTargetTerm] = useState("");
 
   useEffect(() => {
     if (tab !== "refactor" || results.refactor) return;
@@ -64,18 +60,6 @@ export default function Workflow() {
     }
   };
 
-  const runMigration = async () => {
-    const terms = legacyTerms.split(/[,\n]/).map((value) => value.trim()).filter(Boolean);
-    if (!terms.length) return;
-    setLoading((current) => ({ ...current, migration: true }));
-    try {
-      const result = await api.migrationTracker({ legacy_terms: terms, target_term: targetTerm.trim() || undefined });
-      setResults((current) => ({ ...current, migration: result }));
-    } finally {
-      setLoading((current) => ({ ...current, migration: false }));
-    }
-  };
-
   const nearbyTests = Array.isArray(results["pr-review"]?.metadata?.nearby_tests)
     ? (results["pr-review"]?.metadata?.nearby_tests as string[])
     : [];
@@ -84,13 +68,12 @@ export default function Workflow() {
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold text-white">Workflow</h1>
-        <p className="text-sm text-gray-500 mt-1">PR review assistance, refactor planning, and migration tracking.</p>
+        <p className="text-sm text-gray-500 mt-1">PR review assistance and refactor planning.</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
         <TabButton active={tab === "pr-review"} label="PR Review" icon={GitPullRequestArrow} onClick={() => setTab("pr-review")} />
         <TabButton active={tab === "refactor"} label="Refactor Plan" icon={Wrench} onClick={() => setTab("refactor")} />
-        <TabButton active={tab === "migration"} label="Migration Tracker" icon={Milestone} onClick={() => setTab("migration")} />
       </div>
 
       {tab === "pr-review" && (
@@ -119,27 +102,6 @@ export default function Workflow() {
               Nearby tests: {nearbyTests.join(", ")}
             </div>
           )}
-        </div>
-      )}
-
-      {tab === "migration" && (
-        <div className="glass rounded-xl p-4 space-y-3">
-          <textarea
-            value={legacyTerms}
-            onChange={(event) => setLegacyTerms(event.target.value)}
-            placeholder="Legacy terms to track, separated by commas or new lines"
-            className="w-full min-h-[120px] bg-gray-800/50 text-gray-200 placeholder:text-gray-600 px-4 py-3 text-sm rounded-lg border border-t-border focus:border-t-primary/50 focus:outline-none transition-colors"
-          />
-          <input
-            type="text"
-            value={targetTerm}
-            onChange={(event) => setTargetTerm(event.target.value)}
-            placeholder="Target replacement term (optional)"
-            className="w-full bg-gray-800/50 text-gray-200 placeholder:text-gray-600 px-4 py-3 text-sm rounded-lg border border-t-border focus:border-t-primary/50 focus:outline-none transition-colors"
-          />
-          <button type="button" onClick={runMigration} disabled={loading.migration || !legacyTerms.trim()} className="rounded-lg bg-t-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-t-primary/80 disabled:opacity-40 transition-colors">
-            {loading.migration ? "Tracking..." : "Track Migration"}
-          </button>
         </div>
       )}
 

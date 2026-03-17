@@ -107,7 +107,5 @@ export const api = {
     head_ref?: string;
   }) => post<QueryResult>("/pr-review", payload),
   refactorPlan: () => get<QueryResult>("/refactor-plan"),
-  migrationTracker: (payload: { legacy_terms: string[]; target_term?: string }) =>
-    post<QueryResult>("/migration-tracker", payload),
   askArchitecture: (question: string) => post<QueryResult>("/ask", { question }),
 };

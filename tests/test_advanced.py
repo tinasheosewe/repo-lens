@@ -65,12 +65,6 @@ class TestAdvancedAnalyzer:
 
         assert result.evidence
 
-    def test_migration_tracker_finds_term_hits(self, sample_graph: CodeGraph):
-        analyzer = AdvancedAnalyzer(sample_graph, repo_root=FIXTURES_DIR)
-        result = analyzer.migration_tracker(legacy_terms=["AuthService"], target_term="IdentityService")
-
-        assert result.metadata.get("legacy_hits", 0) > 0
-
     def test_ask_architecture_reports_missing_llm_config(self, sample_graph: CodeGraph, monkeypatch):
         monkeypatch.delenv("TRACE_LLM_API_KEY", raising=False)
         analyzer = AdvancedAnalyzer(sample_graph, repo_root=FIXTURES_DIR)

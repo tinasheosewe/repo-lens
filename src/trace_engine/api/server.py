@@ -67,11 +67,6 @@ class PullRequestReviewRequest(BaseModel):
     head_ref: str | None = None
 
 
-class MigrationTrackerRequest(BaseModel):
-    legacy_terms: list[str]
-    target_term: str | None = None
-
-
 def _get_trace() -> Trace:
     if _trace is None:
         raise HTTPException(503, "No repository loaded. POST /api/ingest first.")
@@ -304,13 +299,6 @@ def create_app(repo_path: str | None = None) -> FastAPI:
     @app.get("/api/refactor-plan", response_model=QueryResult)
     def refactor_plan():
         return _get_trace().refactor_plan()
-
-    @app.post("/api/migration-tracker", response_model=QueryResult)
-    def migration_tracker(req: MigrationTrackerRequest = Body(...)):
-        return _get_trace().migration_tracker(
-            legacy_terms=req.legacy_terms,
-            target_term=req.target_term,
-        )
 
     @app.post("/api/ask", response_model=QueryResult)
     def ask_architecture(req: AskRequest = Body(...)):

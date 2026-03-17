@@ -442,56 +442,6 @@ class AdvancedAnalyzer:
             metadata={"candidates": [{"file_path": file_path, "reasons": reasons} for file_path, reasons in ranked[:10]]},
         )
 
-    def migration_tracker(
-        self,
-        *,
-        legacy_terms: list[str],
-        target_term: str | None = None,
-    ) -> QueryResult:
-        terms = [term.strip() for term in legacy_terms if term.strip()]
-        if not terms:
-            return QueryResult(
-                conclusion="Provide at least one legacy term to track.",
-                confidence=Confidence.HIGH,
-            )
-
-        evidence: list[Evidence] = []
-        legacy_hits = 0
-        target_hits = 0
-        for file_path, content in self._iter_repo_text_files():
-            matched_legacy = [term for term in terms if term.lower() in content.lower()]
-            matched_target = target_term and target_term.lower() in content.lower()
-            if not matched_legacy and not matched_target:
-                continue
-            legacy_hits += len(matched_legacy)
-            target_hits += 1 if matched_target else 0
-            evidence.append(
-                Evidence(
-                    file_path=file_path,
-                    description=(
-                        f"legacy_terms={', '.join(matched_legacy) or 'none'}"
-                        + (f" target_present={target_term}" if matched_target and target_term else "")
-                    ),
-                    code_snippet=self._first_matching_lines(file_path, content, matched_legacy + ([target_term] if matched_target and target_term else [])),
-                )
-            )
-
-        return QueryResult(
-            conclusion=(
-                f"Migration tracker found {len(evidence)} file(s) still referencing legacy terms. "
-                f"Legacy hits={legacy_hits}"
-                + (f", target hits={target_hits}." if target_term else ".")
-            ),
-            evidence=evidence,
-            confidence=Confidence.HIGH,
-            metadata={
-                "legacy_terms": terms,
-                "target_term": target_term,
-                "legacy_hits": legacy_hits,
-                "target_hits": target_hits,
-            },
-        )
-
     def ask_architecture(self, question: str) -> QueryResult:
         query = question.strip()
         if not query:
@@ -689,32 +639,6 @@ class AdvancedAnalyzer:
             if stem in candidate_stem or candidate_stem in {f"test_{stem}", stem}:
                 matches.append(rel)
         return matches
-
-    def _iter_repo_text_files(self):
-        if self._repo_root is None:
-            return
-        loader = RepoLoader()
-        for candidate in self._repo_root.rglob("*"):
-            if not candidate.is_file() or loader._is_ignored(candidate, self._repo_root):
-                continue
-            try:
-                content = candidate.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            rel = str(candidate.relative_to(self._repo_root)).replace("\\", "/")
-            yield rel, content
-
-    def _first_matching_lines(self, file_path: str, content: str, terms: list[str]) -> str | None:
-        lines = []
-        lowered_terms = [term.lower() for term in terms if term]
-        for index, line in enumerate(content.splitlines(), start=1):
-            if any(term in line.lower() for term in lowered_terms):
-                lines.append(f"{index}: {line}")
-            if len(lines) >= 8:
-                break
-        if not lines:
-            return self._snippets.for_location(file_path, 1, 20)
-        return "\n".join(lines)
 
     @staticmethod
     def _normalize_scores(values: dict[str, float | int]) -> dict[str, float]:
