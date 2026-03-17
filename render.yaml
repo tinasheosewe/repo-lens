@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: repolens
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: .
+    buildCommand: |
+      pip install -e ".[web]"
+      cd web
+      npm ci
+      npm run build
+    startCommand: uvicorn trace_engine.api.server:create_app --factory --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/status
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
