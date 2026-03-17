@@ -122,10 +122,21 @@ function TypeBar({
 /* ------------------------------------------------------------------ */
 export default function Dashboard() {
   const [stats, setStats] = useState<GraphStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.graphStats().then(setStats);
+    api.graphStats().then(setStats).catch((err) => {
+      setError(err instanceof Error ? err.message : "Unable to load dashboard.");
+    });
   }, []);
+
+  if (error) {
+    return (
+      <div className="glass rounded-xl p-8 text-center text-gray-500">
+        {error}
+      </div>
+    );
+  }
 
   if (!stats) {
     return (

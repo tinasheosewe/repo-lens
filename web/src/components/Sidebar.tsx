@@ -1,6 +1,7 @@
 import {
   Activity,
   AlertTriangle,
+  BookOpen,
   Compass,
   GitBranch,
   LayoutDashboard,
@@ -10,6 +11,7 @@ import {
 import type { Page, StatusResponse } from "../types";
 
 const NAV_ITEMS: { id: Page; label: string; icon: React.ReactNode }[] = [
+  { id: "about", label: "About", icon: <BookOpen size={18} /> },
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
   { id: "impact", label: "Impact Analysis", icon: <Radio size={18} /> },
   { id: "dead-code", label: "Dead Code", icon: <Trash2 size={18} /> },
@@ -24,6 +26,10 @@ interface Props {
 }
 
 export default function Sidebar({ activePage, onNavigate, status }: Props) {
+  const repoLabel = status?.repo_source
+    ? status.repo_source.replace(/\.git$/, "").split("/").filter(Boolean).pop()
+    : null;
+
   return (
     <aside className="w-60 h-full flex flex-col border-r border-t-border bg-t-surface shrink-0">
       {/* Logo */}
@@ -73,7 +79,7 @@ export default function Sidebar({ activePage, onNavigate, status }: Props) {
               Connected
             </div>
             <div className="text-gray-500 font-mono truncate" title={status.repo_path ?? ""}>
-              {status.repo_path?.split("/").pop()}
+              {repoLabel}
             </div>
             <div className="text-gray-500">
               {status.node_count} nodes · {status.edge_count} edges

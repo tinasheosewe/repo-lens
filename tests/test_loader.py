@@ -42,3 +42,22 @@ class TestLoad:
         files = loader.load(tmp_path)
         assert "good.py" in files
         assert not any("__pycache__" in k for k in files)
+
+
+class TestInspect:
+    def test_supported_repo_detected(self, loader: RepoLoader):
+        inspection = loader.inspect(FIXTURES_DIR)
+        assert inspection.supported is True
+        assert inspection.supported_file_count > 0
+        assert ".py" in inspection.detected_extensions
+
+    def test_unsupported_repo_rejected(self, loader: RepoLoader, tmp_path: Path):
+        (tmp_path / "package.json").write_text("{}")
+        (tmp_path / "index.ts").write_text("export const x = 1;")
+
+        inspection = loader.inspect(tmp_path)
+
+        assert inspection.supported is False
+        assert inspection.supported_file_count == 0
+        assert ".ts" in inspection.detected_extensions
+        assert "Python" in inspection.reason

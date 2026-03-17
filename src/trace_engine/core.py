@@ -22,8 +22,10 @@ _PROJECT_ID = "default"
 class Trace:
     """Top-level façade for the Trace system."""
 
-    def __init__(self, repo_path: str | Path) -> None:
+    def __init__(self, repo_path: str | Path, *, source: str | None = None, ref: str | None = None) -> None:
         self.repo_path = Path(repo_path).resolve()
+        self.source = source or str(self.repo_path)
+        self.source_ref = ref
         self._loader = RepoLoader()
         self._classifier = FileClassifier()
         self._builder = GraphBuilder(

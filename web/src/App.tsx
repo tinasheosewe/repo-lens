@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Page, StatusResponse } from "./types";
 import { api } from "./api/client";
 import Sidebar from "./components/Sidebar";
+import About from "./pages/About";
 import Dashboard from "./pages/Dashboard";
 import Impact from "./pages/Impact";
 import DeadCode from "./pages/DeadCode";
@@ -9,20 +10,24 @@ import Dependencies from "./pages/Dependencies";
 import Explorer from "./pages/Explorer";
 
 export default function App() {
-  const [page, setPage] = useState<Page>("dashboard");
+  const [page, setPage] = useState<Page>("about");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api
       .status()
-      .then(setStatus)
+      .then((nextStatus) => {
+        setStatus(nextStatus);
+        setPage(nextStatus.loaded ? "dashboard" : "about");
+      })
       .catch(() => setStatus(null))
       .finally(() => setLoading(false));
   }, []);
 
-  const refresh = () => {
-    api.status().then(setStatus).catch(() => {});
+  const handleRepoLoaded = (nextStatus: StatusResponse) => {
+    setStatus(nextStatus);
+    setPage("dashboard");
   };
 
   if (loading) {
@@ -41,6 +46,7 @@ export default function App() {
       <Sidebar activePage={page} onNavigate={setPage} status={status} />
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 max-w-[1400px] mx-auto">
+          {page === "about" && <About status={status} onRepoLoaded={handleRepoLoaded} />}
           {page === "dashboard" && <Dashboard />}
           {page === "impact" && <Impact />}
           {page === "dead-code" && <DeadCode />}

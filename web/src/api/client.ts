@@ -1,8 +1,10 @@
 import type {
+  AboutResponse,
   GraphEdge,
   GraphNode,
   GraphStats,
   QueryResult,
+  RepoSupportResponse,
   StatusResponse,
 } from "../types";
 
@@ -31,8 +33,15 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  about: () => get<AboutResponse>("/about"),
   status: () => get<StatusResponse>("/status"),
-  ingest: (path: string) => post<StatusResponse>("/ingest", { path }),
+  repoSupport: (source: string, ref?: string) =>
+    get<RepoSupportResponse>(
+      `/repo-support?source=${encodeURIComponent(source)}${
+        ref ? `&ref=${encodeURIComponent(ref)}` : ""
+      }`,
+    ),
+  ingest: (source: string, ref?: string) => post<StatusResponse>("/ingest", { source, ref }),
   graphStats: () => get<GraphStats>("/graph/stats"),
   graphNodes: () => get<GraphNode[]>("/graph/nodes"),
   graphEdges: () => get<GraphEdge[]>("/graph/edges"),

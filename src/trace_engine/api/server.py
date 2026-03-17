@@ -8,6 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from trace_engine.core import Trace
+from trace_engine.ingestion.loader import RepoLoader
+from trace_engine.ingestion.source_resolver import RepoSourceResolver, ResolvedRepoSource
 from trace_engine.models.evidence import QueryResult
 
 # ---------------------------------------------------------------------------
@@ -41,13 +43,59 @@ def create_app(repo_path: str | None = None) -> FastAPI:
     # -----------------------------------------------------------------------
 
     class IngestRequest(BaseModel):
-        path: str
+        source: str
+        ref: str | None = None
 
     class StatusResponse(BaseModel):
         loaded: bool
         repo_path: str | None = None
+        repo_source: str | None = None
+        repo_source_type: str | None = None
+        repo_ref: str | None = None
         node_count: int = 0
         edge_count: int = 0
+
+    class AboutResponse(BaseModel):
+        product_name: str
+        supported_languages: list[str]
+        supported_extensions: list[str]
+        ignored_directories: list[str]
+        summary: str
+
+    class RepoSupportResponse(BaseModel):
+        source: str
+        source_type: str
+        ref: str | None
+        resolved_path: str
+        supported: bool
+        reason: str
+        supported_file_count: int
+        detected_extensions: list[str]
+
+    loader = RepoLoader()
+    source_resolver = RepoSourceResolver()
+
+    def inspect_repo(source: str, ref: str | None = None) -> tuple[ResolvedRepoSource, RepoSupportResponse]:
+        try:
+            resolved = source_resolver.resolve(source, ref=ref)
+            inspection = loader.inspect(resolved.local_path)
+        except FileNotFoundError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except NotADirectoryError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+        return resolved, RepoSupportResponse(
+            source=resolved.source,
+            source_type=resolved.source_type,
+            ref=resolved.ref,
+            resolved_path=inspection.path,
+            supported=inspection.supported,
+            reason=inspection.reason,
+            supported_file_count=inspection.supported_file_count,
+            detected_extensions=inspection.detected_extensions,
+        )
 
     @app.get("/api/status", response_model=StatusResponse)
     def status():
@@ -58,23 +106,60 @@ def create_app(repo_path: str | None = None) -> FastAPI:
             return StatusResponse(
                 loaded=True,
                 repo_path=str(_trace.repo_path),
+                repo_source=_trace.source,
+                repo_source_type="remote" if RepoSourceResolver.is_remote_source(_trace.source) else "local",
+                repo_ref=_trace.source_ref,
                 node_count=g.node_count,
                 edge_count=g.edge_count,
             )
         except RuntimeError:
-            return StatusResponse(loaded=False, repo_path=str(_trace.repo_path))
+            return StatusResponse(
+                loaded=False,
+                repo_path=str(_trace.repo_path),
+                repo_source=_trace.source,
+                repo_source_type="remote" if RepoSourceResolver.is_remote_source(_trace.source) else "local",
+                repo_ref=_trace.source_ref,
+            )
 
     @app.post("/api/ingest", response_model=StatusResponse)
     def ingest(req: IngestRequest):
-        _init_trace(req.path)
+        resolved, inspection = inspect_repo(req.source, ref=req.ref)
+        if not inspection.supported:
+            raise HTTPException(400, inspection.reason)
+        _init_trace(resolved)
         t = _get_trace()
         g = t.ingest()
         return StatusResponse(
             loaded=True,
             repo_path=str(t.repo_path),
+            repo_source=t.source,
+            repo_source_type=inspection.source_type,
+            repo_ref=t.source_ref,
             node_count=g.node_count,
             edge_count=g.edge_count,
         )
+
+    @app.get("/api/about", response_model=AboutResponse)
+    def about():
+        return AboutResponse(
+            product_name="Trace",
+            supported_languages=["Python"],
+            supported_extensions=sorted(loader.SUPPORTED_EXTENSIONS),
+            ignored_directories=sorted(loader.IGNORED_DIRS),
+            summary=(
+                "Trace currently loads Git repository sources and parses Python repositories. "
+                "It builds a graph from supported source files and ignores generated, cached, "
+                "and dependency directories."
+            ),
+        )
+
+    @app.get("/api/repo-support", response_model=RepoSupportResponse)
+    def repo_support(
+        source: str = Query(..., min_length=1),
+        ref: str | None = Query(None),
+    ):
+        _, inspection = inspect_repo(source, ref=ref)
+        return inspection
 
     @app.get("/api/graph/stats")
     def graph_stats():
@@ -165,9 +250,14 @@ def create_app(repo_path: str | None = None) -> FastAPI:
     return app
 
 
-def _init_trace(repo_path: str) -> None:
+def _init_trace(repo_source: str | ResolvedRepoSource) -> None:
     global _trace
-    _trace = Trace(repo_path)
+    resolved = (
+        repo_source
+        if isinstance(repo_source, ResolvedRepoSource)
+        else RepoSourceResolver().resolve(repo_source)
+    )
+    _trace = Trace(resolved.local_path, source=resolved.source, ref=resolved.ref)
     try:
         _trace.graph  # load cached graph if available
     except RuntimeError:

@@ -55,11 +55,34 @@ export interface GraphStats {
 export interface StatusResponse {
   loaded: boolean;
   repo_path: string | null;
+  repo_source: string | null;
+  repo_source_type: string | null;
+  repo_ref: string | null;
   node_count: number;
   edge_count: number;
 }
 
+export interface AboutResponse {
+  product_name: string;
+  supported_languages: string[];
+  supported_extensions: string[];
+  ignored_directories: string[];
+  summary: string;
+}
+
+export interface RepoSupportResponse {
+  source: string;
+  source_type: string;
+  ref: string | null;
+  resolved_path: string;
+  supported: boolean;
+  reason: string;
+  supported_file_count: number;
+  detected_extensions: string[];
+}
+
 export type Page =
+  | "about"
   | "dashboard"
   | "impact"
   | "dead-code"
