@@ -17,7 +17,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.11
       - key: TRACE_REPO_PATH
-        value: .
+        value: https://github.com/miguelgrinberg/flasky.git
       - key: OPENAI_API_KEY
         sync: false
       - key: TRACE_LLM_MODEL
