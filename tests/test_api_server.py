@@ -77,6 +77,12 @@ def test_create_app_preloads_repo_from_trace_repo_path_env(tmp_path: Path, monke
     assert data["repo_source_type"] == "local"
 
 
+def test_create_app_defaults_to_public_flasky_repo(monkeypatch):
+    monkeypatch.delenv("TRACE_REPO_PATH", raising=False)
+
+    assert server._startup_repo_source(None) == server.DEFAULT_STARTUP_REPO_SOURCE
+
+
 def test_status_reports_display_source_for_dot_git_repo(tmp_path: Path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -130,6 +136,7 @@ def test_ask_endpoint_returns_config_message_without_llm(tmp_path: Path, monkeyp
     source_dir.mkdir()
     (source_dir / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
     monkeypatch.delenv("TRACE_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     app = server.create_app()
     client = TestClient(app)
@@ -220,6 +227,7 @@ def test_expired_session_is_evicted(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(server, "_current_time", lambda: now)
 
     app = server.create_app()
+    app.state.startup_repo_source = None
     client = TestClient(app)
 
     ingest_response = client.post("/api/ingest", json={"source": str(source_dir)}, headers=SESSION_HEADERS)
@@ -251,6 +259,7 @@ def test_expired_remote_session_removes_cached_checkout(tmp_path: Path, monkeypa
     monkeypatch.setattr(server, "_current_time", lambda: now)
 
     app = server.create_app()
+    app.state.startup_repo_source = None
     client = TestClient(app)
     remote_headers = {server.TRACE_SESSION_HEADER: "expiring-session"}
 

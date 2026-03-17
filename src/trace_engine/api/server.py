@@ -25,6 +25,7 @@ from trace_engine.models.evidence import QueryResult
 TRACE_SESSION_HEADER = "X-Trace-Session"
 DEFAULT_SESSION_TTL_SECONDS = 60 * 60
 DEFAULT_SESSION_SWEEP_INTERVAL_SECONDS = 60
+DEFAULT_STARTUP_REPO_SOURCE = "https://github.com/miguelgrinberg/flasky.git"
 
 
 @dataclass
@@ -264,7 +265,7 @@ def _startup_repo_source(explicit_repo_path: str | None) -> str | None:
     if env_repo_path:
         return env_repo_path
 
-    return None
+    return DEFAULT_STARTUP_REPO_SOURCE
 
 
 def create_app(repo_path: str | None = None) -> FastAPI:

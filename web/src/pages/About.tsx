@@ -3,7 +3,7 @@ import { BookOpen, FolderSearch, ShieldAlert, CheckCircle2 } from "lucide-react"
 import { api } from "../api/client";
 import type { AboutResponse, RepoSupportResponse, StatusResponse } from "../types";
 
-const DEFAULT_REMOTE_SOURCE = "https://github.com/tinasheosewe/RepoLens.git";
+const DEFAULT_REMOTE_SOURCE = "https://github.com/miguelgrinberg/flasky.git";
 
 interface Props {
   status: StatusResponse | null;
