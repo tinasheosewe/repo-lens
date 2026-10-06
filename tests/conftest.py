@@ -7,9 +7,16 @@ import pytest
 from trace_engine.analysis.graph_builder import GraphBuilder
 from trace_engine.analysis.python_parser import PythonParser
 from trace_engine.ingestion.classifier import FileClassifier
+from trace_engine.ingestion.source_resolver import RepoSourceResolver
 from trace_engine.models.code_graph import CodeGraph
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "sample_project"
+
+
+@pytest.fixture(autouse=True)
+def isolated_remote_cache(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep repositories cloned by the tests out of ~/.trace/remote_repos."""
+    monkeypatch.setattr(RepoSourceResolver, "CACHE_DIR", tmp_path_factory.mktemp("remote_repos"))
 
 
 @pytest.fixture

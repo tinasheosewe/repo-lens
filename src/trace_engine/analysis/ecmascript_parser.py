@@ -105,10 +105,13 @@ class _EcmaScriptParserBase(BaseParser):
 
     def parse_file(self, file_path: str, content: str) -> ParseResult:
         source = content.encode("utf-8")
-        tree = self._parser.parse(source)
+        tree = self._parser_for(file_path).parse(source)
         visitor = _EcmaScriptVisitor(file_path, source)
         visitor.visit(tree.root_node)
         return visitor.result()
+
+    def _parser_for(self, file_path: str) -> Parser:
+        return self._parser
 
     def _resolve_path_candidates(self, base: str, available_paths: set[str]) -> str | None:
         normalized = base.replace("\\", "/")
@@ -162,6 +165,14 @@ class TypeScriptParser(_EcmaScriptParserBase):
             },
             language=Language(tree_sitter_typescript.language_typescript()),
         )
+        # JSX is not part of the TypeScript grammar, which reads <Tag> as a
+        # type assertion, so .tsx files are parsed with the TSX grammar.
+        self._tsx_parser = Parser(Language(tree_sitter_typescript.language_tsx()))
+
+    def _parser_for(self, file_path: str) -> Parser:
+        if file_path.endswith(".tsx"):
+            return self._tsx_parser
+        return self._parser
 
 
 class _EcmaScriptVisitor:

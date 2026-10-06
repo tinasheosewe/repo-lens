@@ -65,6 +65,19 @@ class TestLoad:
         assert "good.py" in files
         assert not any("__pycache__" in k for k in files)
 
+    def test_skips_symlinked_files(self, loader: RepoLoader, tmp_path: Path):
+        outside = tmp_path / "outside.py"
+        outside.write_text("secret = 1")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "good.py").write_text("x = 1")
+        (repo / "link.py").symlink_to(outside)
+
+        files = loader.load(repo)
+
+        assert "good.py" in files
+        assert "link.py" not in files
+
     def test_loads_files_for_configured_parser_extensions(self, tmp_path: Path):
         (tmp_path / "index.ts").write_text("export const value = 1;", encoding="utf-8")
         loader = RepoLoader(parsers=[DummyTsParser()])

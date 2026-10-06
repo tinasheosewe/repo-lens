@@ -10,6 +10,7 @@ build/
 .venv/
 venv/
 .env
+.env.local
 .trace/
 .mypy_cache/
 .pytest_cache/

@@ -69,6 +69,43 @@ def test_health_endpoint_does_not_require_session_header():
     assert response.json() == {"ok": True}
 
 
+def test_cors_allows_only_the_dev_frontend_by_default(monkeypatch):
+    monkeypatch.delenv("TRACE_CORS_ORIGINS", raising=False)
+    app = server.create_app()
+    client = TestClient(app)
+
+    allowed = client.get("/api/health", headers={"Origin": "http://127.0.0.1:5173"})
+    other = client.get("/api/health", headers={"Origin": "https://example.org"})
+
+    assert allowed.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
+    assert "access-control-allow-origin" not in other.headers
+
+
+def test_cors_origins_can_be_configured(monkeypatch):
+    monkeypatch.setenv("TRACE_CORS_ORIGINS", "https://trace.example.org, https://other.example.org")
+    app = server.create_app()
+    client = TestClient(app)
+
+    response = client.get("/api/health", headers={"Origin": "https://other.example.org"})
+
+    assert response.headers.get("access-control-allow-origin") == "https://other.example.org"
+
+
+def test_frontend_files_are_served_from_dist_only(tmp_path: Path):
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html></html>", encoding="utf-8")
+    (dist / "assets" / "app.js").write_text("export {};", encoding="utf-8")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("not part of the front end", encoding="utf-8")
+    index = (dist / "index.html").resolve()
+
+    assert server._resolve_frontend_file(dist, "assets/app.js") == (dist / "assets" / "app.js").resolve()
+    assert server._resolve_frontend_file(dist, "some/client/route") == index
+    assert server._resolve_frontend_file(dist, "../outside.txt") == index
+    assert server._resolve_frontend_file(dist, str(outside)) == index
+
+
 def test_create_app_preloads_repo_from_trace_repo_path_env(tmp_path: Path, monkeypatch):
     source_dir = tmp_path / "repo"
     source_dir.mkdir()

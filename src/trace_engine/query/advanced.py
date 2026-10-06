@@ -637,7 +637,7 @@ class AdvancedAnalyzer:
                 onboarding=onboarding,
                 critical=critical,
                 warning=(
-                    f"LLM repo Q&A is available but not configured: {exc}. "
+                    f"LLM repo Q&A is available but not configured: {exc} "
                     "Set OPENAI_API_KEY and optionally TRACE_LLM_MODEL / TRACE_LLM_BASE_URL to enable it."
                 ),
             )
@@ -1291,6 +1291,10 @@ class AdvancedAnalyzer:
     def _resolve_review_diff_targets(self, *, base_ref: str | None, head_ref: str | None) -> tuple[str | None, str | None]:
         refs = [ref for ref in [base_ref, head_ref] if ref]
         if self._repo_root is None or not refs:
+            return (None, None)
+        if any(ref.startswith("-") for ref in refs):
+            # Refs are passed to git on the command line, where a leading
+            # dash would be read as an option.
             return (None, None)
         for ref in refs:
             self._fetch_review_ref(ref)

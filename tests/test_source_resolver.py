@@ -54,6 +54,12 @@ class TestRepoSourceResolver:
         assert resolved.source_type == "local"
         assert resolved.local_path == tmp_path.resolve()
 
+    def test_rejects_ref_that_git_would_read_as_an_option(self, tmp_path: Path):
+        resolver = RepoSourceResolver()
+
+        with pytest.raises(ValueError, match="cannot start with"):
+            resolver.resolve(str(tmp_path), ref="--upload-pack=example")
+
     def test_clones_file_remote(self, tmp_path: Path):
         resolver = RepoSourceResolver()
 

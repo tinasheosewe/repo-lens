@@ -223,3 +223,27 @@ def test_pr_review_uses_git_refs(tmp_path: Path):
     assert "app.py" in result.metadata.get("changed_files", [])
     assert result.metadata.get("risk_level") in {"low", "medium", "high"}
     assert result.metadata.get("risk_reasons")
+
+
+def test_pr_review_ignores_refs_that_git_would_read_as_options(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "trace@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Trace Test"], cwd=repo, check=True)
+
+    app_file = repo / "app.py"
+    app_file.write_text("def main():\n    return 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+
+    app_file.write_text("def main():\n    return 2\n", encoding="utf-8")
+    subprocess.run(["git", "commit", "-am", "update app"], cwd=repo, check=True, capture_output=True)
+
+    trace = Trace(repo)
+    trace.ingest()
+    written_by_git = tmp_path / "written-by-git.txt"
+    result = trace.pr_review(base_ref=f"--output={written_by_git}", head_ref="HEAD")
+
+    assert not written_by_git.exists()
+    assert "changed_files" not in result.metadata

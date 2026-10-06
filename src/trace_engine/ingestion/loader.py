@@ -136,7 +136,9 @@ class RepoLoader:
 
     def _iter_repository_files(self, root: Path):
         for file_path in root.rglob("*"):
-            if not file_path.is_file():
+            # Symlinks are skipped: one inside a cloned repository can point at
+            # any file on the machine that runs the analysis.
+            if file_path.is_symlink() or not file_path.is_file():
                 continue
             if self._is_ignored(file_path, root):
                 continue

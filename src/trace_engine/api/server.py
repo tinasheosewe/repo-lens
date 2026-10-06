@@ -26,6 +26,9 @@ TRACE_SESSION_HEADER = "X-Trace-Session"
 DEFAULT_SESSION_TTL_SECONDS = 60 * 60
 DEFAULT_SESSION_SWEEP_INTERVAL_SECONDS = 60
 DEFAULT_STARTUP_REPO_SOURCE = "https://github.com/miguelgrinberg/flasky.git"
+# Origins allowed to call the API from a browser. The Vite dev server needs it;
+# the built front end is served by this app and is same-origin.
+DEFAULT_CORS_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")
 
 
 @dataclass
@@ -272,6 +275,26 @@ def _startup_repo_source(explicit_repo_path: str | None) -> str | None:
     return DEFAULT_STARTUP_REPO_SOURCE
 
 
+def _cors_origins() -> list[str]:
+    raw = os.environ.get("TRACE_CORS_ORIGINS", "").strip()
+    if not raw:
+        return list(DEFAULT_CORS_ORIGINS)
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def _resolve_frontend_file(dist: Path, requested: str) -> Path:
+    """Map a request path to a file inside the built front end.
+
+    Anything that is not a file under *dist* (unknown routes, ``..`` segments,
+    absolute paths) gets ``index.html``, which is what a single-page app wants.
+    """
+    root = dist.resolve()
+    candidate = (root / requested).resolve()
+    if candidate.is_file() and candidate.is_relative_to(root):
+        return candidate
+    return root / "index.html"
+
+
 def create_app(repo_path: str | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -292,7 +315,7 @@ def create_app(repo_path: str | None = None) -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_cors_origins(),
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -579,10 +602,7 @@ def create_app(repo_path: str | None = None) -> FastAPI:
 
         @app.get("/{full_path:path}")
         def spa(full_path: str):
-            file = dist / full_path
-            if file.is_file():
-                return FileResponse(file)
-            return FileResponse(dist / "index.html")
+            return FileResponse(_resolve_frontend_file(dist, full_path))
 
     return app
 

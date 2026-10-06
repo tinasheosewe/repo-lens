@@ -151,6 +151,23 @@ class QuerySnippetResolver:
             if resolved in seen:
                 continue
             seen.add(resolved)
+            if not self._inside_repo(resolved):
+                continue
             if resolved.is_file():
                 resolved_candidates.append(resolved)
         return resolved_candidates
+
+    def _inside_repo(self, resolved: Path) -> bool:
+        """With a repository root, only read files that resolve inside it.
+
+        Paths reach this class from a stored graph, from git and from LLM tool
+        calls, and ``resolve()`` follows symlinks, so this check is what keeps
+        a snippet from being read from elsewhere on the machine.
+        """
+        if self._repo_root is None:
+            return True
+        try:
+            resolved.relative_to(self._repo_root)
+        except ValueError:
+            return False
+        return True

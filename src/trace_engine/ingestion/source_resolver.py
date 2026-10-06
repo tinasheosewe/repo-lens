@@ -99,6 +99,10 @@ class RepoSourceResolver:
         normalized_ref = ref.strip() if ref else None
         if not normalized:
             raise ValueError("Repository source cannot be empty.")
+        if normalized_ref and normalized_ref.startswith("-"):
+            # The ref is passed to git on the command line, where a leading
+            # dash would be read as an option.
+            raise ValueError("Repository ref cannot start with '-'.")
 
         if self.is_remote_source(normalized):
             local_path = self._clone_or_update(normalized, normalized_ref, session_id=session_id)
@@ -277,6 +281,10 @@ class RepoSourceResolver:
         limit: int,
     ) -> list[RepoCommitRef]:
         target = ref or "HEAD"
+        if target.startswith("-"):
+            # Branch names come from the remote; never hand git one it would
+            # parse as an option.
+            return []
         remote_target = f"origin/{target}"
         rev = remote_target
         probe = subprocess.run(
